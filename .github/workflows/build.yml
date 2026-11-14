@@ -10,6 +10,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# The default token is read-only, which makes "create release" fail with 403.
+permissions:
+  contents: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
