@@ -1,0 +1,183 @@
+import { Sun } from "lucide-react";
+import { useEffect, useState } from "react";
+import type { Settings } from "../api/client";
+import { useApi } from "../hooks/useRealtime";
+import { useSecretUnlock } from "../hooks/useSecretUnlock";
+import { useToasts } from "../hooks/useToasts";
+import { Panel, Skeleton } from "../components/ui";
+
+export function SettingsView() {
+  const api = useApi();
+  const { push } = useToasts();
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [version, setVersion] = useState("—");
+  const { tapAbout } = useSecretUnlock();
+  const [theme, setTheme] = useState<string>(() => localStorage.getItem("butter.theme") ?? "dark");
+
+  useEffect(() => {
+    void api.getSettings().then(setSettings);
+    void api.version().then((v) => setVersion(v.version));
+  }, [api]);
+
+  const handleAboutClick = () => {
+    const next = tapAbout();
+    if (next) {
+      push({
+        kind: "ok",
+        title: "已解锁",
+        detail: "事件面板已显示在左侧",
+      });
+    }
+  };
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("butter.theme", theme);
+  }, [theme]);
+
+  if (!settings) {
+    return (
+      <div className="page">
+        <Skeleton height={42} />
+        <Skeleton height={180} />
+        <Skeleton height={180} />
+      </div>
+    );
+  }
+
+  const patch = async (next: Partial<Settings>) => {
+    setSettings({ ...settings, ...next });
+    await api.saveSettings(next);
+  };
+
+  return (
+    <div className="page">
+      <div className="page__head">
+        <div>
+          <h1>设置</h1>
+          <p>外观与探测节奏</p>
+        </div>
+      </div>
+
+      <Panel title="外观" className="settings-panel">
+        <div className="setting-row" style={{ paddingTop: 0 }}>
+          <div className="setting-row__text">
+            <strong>主题</strong>
+            <span>深色为默认；浅色适合强光环境</span>
+          </div>
+          <div className="setting-row__control">
+            <div className="seg">
+              {["dark", "light"].map((value) => (
+                <button key={value} data-on={theme === value} onClick={() => setTheme(value)}>
+                  {value === "dark" ? "深色" : "浅色"}
+                </button>
+              ))}
+            </div>
+            <Sun style={{ width: 14, color: "var(--text-dim)" }} />
+          </div>
+        </div>
+      </Panel>
+
+      <Panel title="行为" className="settings-panel">
+        <div className="setting-row" style={{ paddingTop: 0 }}>
+          <div className="setting-row__text">
+            <strong>自动保活</strong>
+            <span>后台定期续期在线账号，打开账单时无需等待</span>
+          </div>
+          <div className="setting-row__control">
+            <button
+              className="switch"
+              data-on={settings.auto_refresh}
+              onClick={() => void patch({ auto_refresh: !settings.auto_refresh })}
+              aria-label="toggle"
+            />
+          </div>
+        </div>
+        <div className="setting-row">
+          <div className="setting-row__text">
+            <strong>保活间隔</strong>
+            <span>建议 10 分钟；间隔越短越耗流量</span>
+          </div>
+          <div className="setting-row__control">
+            <input
+              style={{ width: 80, textAlign: "right" }}
+              value={settings.auto_refresh_minutes}
+              inputMode="numeric"
+              onChange={(event) =>
+                void patch({
+                  auto_refresh_minutes:
+                    Math.min(120, Math.max(2, Number(event.target.value.replace(/\D/g, "")) || 10)),
+                })
+              }
+            />
+          </div>
+        </div>
+        <div className="setting-row">
+          <div className="setting-row__text">
+            <strong>网络重试次数</strong>
+            <span>仅对代理 / TLS 类错误重试，密码错误不重试</span>
+          </div>
+          <div className="setting-row__control">
+            <input
+              style={{ width: 80, textAlign: "right" }}
+              value={settings.retry_attempts}
+              inputMode="numeric"
+              onChange={(event) =>
+                void patch({ retry_attempts: Number(event.target.value.replace(/\D/g, "")) || 1 })
+              }
+            />
+          </div>
+        </div>
+        <div className="setting-row">
+          <div className="setting-row__text">
+            <strong>详细网络日志</strong>
+            <span>把每个请求的状态码记入事件日志</span>
+          </div>
+          <div className="setting-row__control">
+            <button
+              className="switch"
+              data-on={settings.verbose_network_log}
+              onClick={() => void patch({ verbose_network_log: !settings.verbose_network_log })}
+              aria-label="toggle"
+            />
+          </div>
+        </div>
+        <div className="setting-row">
+          <div className="setting-row__text">
+            <strong>浏览器版本</strong>
+            <span>用于匹配请求特征</span>
+          </div>
+          <div className="setting-row__control">
+            <select
+              style={{ width: 160 }}
+              value={settings.impersonate}
+              onChange={(event) => void patch({ impersonate: event.target.value })}
+            >
+              <option value="chrome142">chrome142</option>
+              <option value="chrome134">chrome134</option>
+              <option value="chrome145">chrome145</option>
+            </select>
+          </div>
+        </div>
+      </Panel>
+
+      <Panel className="settings-panel" title="关于">
+        <div className="setting-row" style={{ paddingTop: 0 }}>
+          <div className="setting-row__text">
+            <strong
+              onClick={handleAboutClick}
+              style={{ cursor: "default", userSelect: "none" }}
+              title=""
+            >
+              关于
+            </strong>
+            <span>Butter · 版本 {version}</span>
+          </div>
+          <div className="setting-row__control">
+            <span className="mono tiny dim">{version}</span>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+}

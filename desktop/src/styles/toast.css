@@ -1,0 +1,138 @@
+.toasts {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 340px;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  padding: 11px 10px 11px 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-strong);
+  background: color-mix(in srgb, var(--bg-panel) 94%, transparent);
+  box-shadow: var(--shadow-pop);
+  backdrop-filter: blur(12px);
+  pointer-events: auto;
+  animation: toast-in 220ms var(--ease) both;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.toast__bar {
+  width: 3px;
+  border-radius: 3px;
+  margin: 2px 0 2px 8px;
+  background: var(--text-dim);
+}
+
+.toast--ok .toast__bar {
+  background: var(--ok);
+}
+.toast--error .toast__bar {
+  background: var(--danger);
+}
+.toast--info .toast__bar {
+  background: var(--amber);
+}
+
+.toast__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.toast__body strong {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.toast__body span {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.toast__close {
+  color: var(--text-dim);
+  align-self: flex-start;
+  padding: 2px;
+  border-radius: 5px;
+}
+
+.toast__close:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.toast__close svg {
+  width: 13px;
+  height: 13px;
+}
+
+
+/* Long-running job indicator (login / relogin / bulk import) ------------ */
+.job-indicator {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: color-mix(in srgb, var(--bg-panel) 94%, transparent);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(14px) saturate(1.1);
+  color: var(--amber);
+  animation: job-in 0.18s ease-out;
+}
+
+.job-indicator__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.job-indicator__body strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.job-indicator__body span {
+  font-size: 11px;
+  color: var(--text-dim);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes job-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

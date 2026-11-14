@@ -1,0 +1,210 @@
+/* Butter design tokens — warm-amber console, dark-first.
+   Reference target: a tool that feels like good hardware: matte surfaces,
+   hairline borders, one confident accent, zero decoration noise. */
+
+:root {
+  color-scheme: dark;
+
+  --bg: #0c0a09;
+  --bg-raised: #131110;
+  --bg-panel: #16130f;
+  --bg-inset: #0f0d0b;
+  --bg-hover: #1d1915;
+
+  --line: #241f19;
+  --line-strong: #332b22;
+  --line-focus: #8a5a1f;
+
+  --text: #f5efe6;
+  --text-muted: #a89b8a;
+  --text-dim: #6f6558;
+
+  --amber: #f2b25c;
+  --amber-strong: #ffc978;
+  --amber-soft: rgba(242, 178, 92, 0.12);
+  --amber-line: rgba(242, 178, 92, 0.28);
+
+  --ok: #7fc98a;
+  --warn: #e3b341;
+  --danger: #e5674e;
+  --info: #7aa7d8;
+
+  --radius-xs: 6px;
+  --radius-sm: 9px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 18px 40px -24px rgba(0, 0, 0, 0.9);
+  --shadow-pop: 0 24px 60px -28px rgba(0, 0, 0, 0.9), 0 2px 0 rgba(255, 255, 255, 0.04) inset;
+
+  --font-sans: "Inter var", "Inter", -apple-system, "SF Pro Text", "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, monospace;
+
+  --titlebar-h: 46px;
+  --rail-w: 236px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f4ee;
+  --bg-raised: #fffdf9;
+  --bg-panel: #fffdf9;
+  --bg-inset: #f1ece2;
+  --bg-hover: #f4eee4;
+  --line: #e4dbcc;
+  --line-strong: #d3c7b4;
+  --text: #211c16;
+  --text-muted: #6b6153;
+  --text-dim: #918676;
+  --amber: #a8661a;
+  --amber-strong: #8a5312;
+  --amber-soft: rgba(168, 102, 26, 0.1);
+  --amber-line: rgba(168, 102, 26, 0.25);
+  --ok: #2f7d45;
+  --warn: #8a6a12;
+  --danger: #b3402c;
+  --info: #2f5f96;
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 12px 32px -22px rgba(60, 45, 20, 0.5);
+  --shadow-pop: 0 28px 60px -30px rgba(60, 45, 20, 0.45);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: var(--amber-soft);
+  color: var(--text);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+body::before {
+  /* single ambient wash, no gradients-as-decoration beyond this */
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(680px 340px at 12% -8%, rgba(242, 178, 92, 0.09), transparent 70%),
+    radial-gradient(520px 260px at 100% 0%, rgba(122, 167, 216, 0.05), transparent 70%);
+  z-index: 0;
+}
+
+:root[data-theme="light"] body::before {
+  background:
+    radial-gradient(680px 340px at 12% -8%, rgba(168, 102, 26, 0.07), transparent 70%),
+    radial-gradient(520px 260px at 100% 0%, rgba(47, 95, 150, 0.05), transparent 70%);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+a {
+  color: var(--amber);
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+input,
+textarea,
+select {
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  width: 100%;
+  transition: border-color 140ms var(--ease), background 140ms var(--ease);
+}
+
+input:hover,
+textarea:hover,
+select:hover {
+  border-color: var(--line-strong);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--line-focus);
+  background: var(--bg-raised);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-dim);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

@@ -1,0 +1,626 @@
+/* Shared component layer — hand-rolled primitives so there is no dependency on
+   a UI kit's default look. Each class is a single responsibility. */
+
+/* ---------- shell ------------------------------------------------------- */
+.shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: var(--titlebar-h) 1fr;
+  height: 100vh;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  /* macOS draws the traffic lights over the webview (titleBarStyle: Overlay),
+     so the brand has to clear them. Windows puts its controls on the right and
+     the overlay is off, so a small inset is enough. */
+  padding: 0 16px 0 84px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(18px) saturate(1.1);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+/* Windows / Linux: no left-side window controls to dodge. */
+:root[data-platform="windows"] .titlebar,
+:root[data-platform="linux"] .titlebar {
+  padding-left: 18px;
+}
+
+/* Also guard against the macOS traffic lights before data-platform is set. */
+@supports (-webkit-touch-callout: none) {
+  .titlebar {
+    padding-left: 84px;
+  }
+}
+
+.titlebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* App icon, not a letter tile: rounded like the dock icon. */
+.titlebar__mark {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.titlebar__sep {
+  width: 1px;
+  height: 16px;
+  background: var(--line-strong);
+}
+
+.titlebar__status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.titlebar__spacer {
+  flex: 1;
+}
+
+.titlebar__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: var(--rail-w) 1fr;
+  min-height: 0;
+}
+
+/* ---------- rail -------------------------------------------------------- */
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 12px;
+  border-right: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-raised) 60%, transparent);
+  overflow-y: auto;
+}
+
+.rail__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+}
+
+.rail__label {
+  padding: 6px 10px 4px;
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.rail__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: left;
+  transition: background 120ms var(--ease), color 120ms var(--ease);
+}
+
+.rail__item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.rail__item[data-active="true"] {
+  background: var(--amber-soft);
+  color: var(--amber-strong);
+  box-shadow: inset 0 0 0 1px var(--amber-line);
+}
+
+.rail__item svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.7;
+  flex: none;
+}
+
+.rail__count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.rail__foot {
+  margin-top: auto;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+  font-size: 11.5px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rail__foot-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rail__foot-row b {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* ---------- panels ------------------------------------------------------ */
+.panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-panel);
+  overflow: hidden;
+}
+
+.panel__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel__title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.panel__sub {
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.panel__body {
+  padding: 16px;
+  overflow: visible;
+}
+
+.panel__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-inset) 60%, transparent);
+}
+
+/* ---------- buttons ----------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: transform 120ms var(--ease), background 120ms var(--ease), border-color 120ms var(--ease),
+    box-shadow 120ms var(--ease);
+}
+
+.btn svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.8;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--text-dim);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0.5px) scale(0.995);
+}
+
+.btn--primary {
+  background: linear-gradient(180deg, var(--amber-strong), var(--amber));
+  border-color: transparent;
+  color: #2a1c07;
+  font-weight: 600;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 8px 18px -12px rgba(242, 178, 92, 0.9);
+}
+
+/* `brightness()` on a warm gradient washed out in light mode and darkened the
+   label in dark mode. Shift the gradient stops explicitly instead. */
+.btn--primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--amber) 0%, var(--amber-strong) 100%);
+  border-color: transparent;
+  color: #2a1c07;
+  filter: none;
+}
+
+.btn--primary:active:not(:disabled) {
+  background: linear-gradient(180deg, var(--amber-strong) 0%, var(--amber) 100%);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+
+:root[data-theme="light"] .btn--primary {
+  color: #fffaf0;
+}
+
+:root[data-theme="light"] .btn--primary:hover:not(:disabled) {
+  color: #fffaf0;
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: transparent;
+}
+
+.btn--danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.btn--sm {
+  height: 27px;
+  padding: 0 10px;
+  font-size: 12px;
+  border-radius: var(--radius-xs);
+}
+
+.btn--icon {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+
+/* ---------- inputs ------------------------------------------------------ */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field__label {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+}
+
+.field__hint {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+/* ---------- badges ------------------------------------------------------ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.badge--online {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 13%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 26%, transparent);
+}
+
+.badge--offline {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 26%, transparent);
+}
+
+.badge--idle {
+  color: var(--text-muted);
+  background: var(--bg-inset);
+  border-color: var(--line);
+}
+
+.badge--card {
+  color: var(--amber-strong);
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+}
+
+.badge--noc {
+  color: var(--text-dim);
+  background: transparent;
+  border-color: var(--line);
+}
+
+.badge--warn {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 26%, transparent);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.dot--pulse {
+  animation: pulse 1.8s var(--ease) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  50% {
+    opacity: 0.65;
+    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 20%, transparent);
+  }
+}
+
+/* ---------- table ------------------------------------------------------- */
+.table-wrap {
+  overflow: auto;
+  min-height: 0;
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12.5px;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  text-align: left;
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: var(--bg-panel);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+  vertical-align: middle;
+}
+
+.table tbody tr {
+  transition: background 110ms var(--ease);
+  cursor: pointer;
+}
+
+.table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.table tbody tr[data-selected="true"] {
+  background: var(--amber-soft);
+  box-shadow: inset 2px 0 0 var(--amber);
+}
+
+.table tbody tr[data-checked="true"] .cell-check {
+  opacity: 1;
+}
+
+.cell-email {
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+
+.cell-mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.cell-check {
+  opacity: 0;
+  transition: opacity 120ms var(--ease);
+}
+
+.table tbody tr:hover .cell-check,
+.cell-check[data-on="true"] {
+  opacity: 1;
+}
+
+.checkbox {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-inset);
+  display: grid;
+  place-items: center;
+  transition: all 120ms var(--ease);
+}
+
+.checkbox[data-on="true"] {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #2a1c07;
+}
+
+.checkbox svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 3;
+}
+
+/* ---------- misc -------------------------------------------------------- */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 56px 24px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.empty__icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px dashed var(--line-strong);
+  color: var(--text-muted);
+}
+
+.empty__icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.empty h3 {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.empty p {
+  font-size: 12px;
+  max-width: 34ch;
+}
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-inset);
+  color: var(--text-muted);
+}
+
+.divider {
+  height: 1px;
+  background: var(--line);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.row--between {
+  justify-content: space-between;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.dim {
+  color: var(--text-dim);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.tiny {
+  font-size: 11px;
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* skeleton shimmer (no external dep) */
+.skel {
+  border-radius: var(--radius-xs);
+  background: linear-gradient(90deg, var(--bg-inset) 25%, var(--bg-hover) 37%, var(--bg-inset) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}

@@ -1,0 +1,166 @@
+/* Ordering/layout corrections that must win over the component defaults. */
+
+.setting-row {
+  align-items: center;
+}
+
+/* Every control in a settings row must render at one height. Native <select>
+   adds its own arrow box and reports `line-height: normal`, so it came out ~1px
+   taller than <input> even with identical padding. Pin the box model instead of
+   letting intrinsic sizing decide. */
+.setting-row__control input,
+.setting-row__control select,
+.setting-row__control textarea,
+.setting-row select,
+.setting-row input {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  line-height: 30px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 12.5px;
+}
+
+.setting-row__control textarea,
+.setting-row textarea {
+  height: auto;
+  min-height: 64px;
+  line-height: 1.55;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+/* Native select chrome differs per platform; appearance:none keeps the arrow
+   from reserving extra vertical space. */
+.setting-row__control select,
+.setting-row select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
+    linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 13px, calc(100% - 9px) 13px;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 26px;
+}
+
+.setting-row + .setting-row {
+  margin-top: 1px;
+}
+
+/* Panel bodies that host key/value rows need breathing room, not doubled padding. */
+.panel__body > .stack > .setting-row:first-child {
+  padding-top: 0;
+}
+
+/* Table keeps its header visible while the account list scrolls. */
+.accounts__table {
+  display: block;
+  height: 100%;
+}
+
+.table thead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+/* Segmented control sits flush inside rows. */
+.setting-row .seg {
+  flex: none;
+}
+
+/* Billing: the form panel should not stretch to card-visual height. */
+.billing__grid > .panel {
+  align-self: start;
+}
+
+/* Give the light theme its own sheen on the card mock so it stays legible. */
+:root[data-theme="light"] .card-visual[data-empty="true"] {
+  background: var(--bg-inset);
+}
+
+/* Long email in the titlebar/detail never pushes controls around. */
+.detail__email,
+.pick__email {
+  min-width: 0;
+}
+
+/* Rows that follow a panel head must not repeat the head's padding. */
+.panel__body > .setting-row:first-child {
+  padding-top: 0;
+}
+
+/* Settings lists: tighten the panel body, keep the first row flush. */
+/* Settings cards need real breathing room under the panel head;
+   the previous 2px top inset made the first row look glued to the title. */
+.settings-panel > .panel__body {
+  padding: 14px 16px 14px;
+}
+
+.settings-panel .setting-row:first-child {
+  padding-top: 0;
+}
+
+.setting-row__text strong {
+  display: block;
+}
+
+/* Settings cards must keep their natural height.
+   `.page` is a scrolling flex column, so panels are flex items and default to
+   `flex-shrink: 1`. Combined with `.panel { overflow: hidden }` that clipped the
+   bottom rows of the taller cards (代理 / 指纹 / 关于). Pin them to content height
+   and let `.page` do the scrolling — `min-height: auto` keeps the rounded-corner
+   clipping intact. */
+.settings-panel,
+.page > .panel {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: max-content;
+}
+
+/* The fingerprint textarea is tall; give it room instead of squeezing. */
+.settings-panel textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+
+
+/* Form controls must share one height everywhere, not just in settings rows.
+   Native <select> reserves extra vertical space for its arrow and reports
+   `line-height: normal`, so it drifted ~1px taller than <input>. Pin the box
+   model and draw the arrow ourselves. */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+.billing__form select,
+.billing__form input {
+  box-sizing: border-box;
+  height: 36px;
+  min-height: 36px;
+  line-height: 34px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+select,
+.billing__form select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
+    linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+  background-position: calc(100% - 15px) center, calc(100% - 10px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 28px;
+}
+
+textarea,
+.billing__form textarea {
+  height: auto;
+  min-height: 64px;
+  line-height: 1.55;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
