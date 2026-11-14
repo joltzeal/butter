@@ -43,6 +43,12 @@ def main() -> int:
             break
     cargo.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    pyproject = ROOT / "pyproject.toml"
+    text = pyproject.read_text(encoding="utf-8")
+    # Only the [project] version, not dependency pins.
+    text = re.sub(r'(?m)^(version\s*=\s*)"[^"]+"', f'\\1"{new}"', text, count=1)
+    pyproject.write_text(text, encoding="utf-8")
+
     init = ROOT / "src" / "butter" / "__init__.py"
     text = init.read_text(encoding="utf-8")
     if "__version__" in text:
