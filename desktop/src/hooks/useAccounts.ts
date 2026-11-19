@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { BackendError } from "../api/client";
 import type { Account, Api, BillingForm } from "../api/client";
 import { useOptionalApi, useRealtime } from "./useRealtime";
 import { useToasts } from "./useToasts";
@@ -15,6 +16,12 @@ export function useAccounts() {
     refetchOnWindowFocus: false,
     // A background refetch (status poll, invalidation) must not blank the list.
     placeholderData: keepPreviousData,
+    // While a login waits for a 2FA code, watch the flag so a missed event still
+    // brings the dialog up.
+    refetchInterval: (query) => {
+      const rows = query.state.data as Account[] | undefined;
+      return rows?.some((a) => a.awaiting_hsa2) ? 2000 : false;
+    },
   });
 }
 
@@ -23,7 +30,7 @@ export function useAccountActions() {
   // API instance is guaranteed; the assertion keeps hook order stable.
   const api = useOptionalApi() as Api;
   const qc = useQueryClient();
-  const { push } = useToasts();
+  const { push, dismiss } = useToasts();
 
   const invalidate = () => qc.invalidateQueries({ queryKey: KEY });
 
@@ -33,7 +40,12 @@ export function useAccountActions() {
       invalidate();
       push({ kind: "ok", title: "账号已添加", detail: account.email });
     },
-    onError: (err: Error) => push({ kind: "error", title: "添加失败", detail: err.message }),
+    onError: (err: Error) =>
+      push({
+        kind: "error",
+        title: err instanceof BackendError && err.status === 409 ? "账号已存在" : "添加失败",
+        detail: err.message,
+      }),
   });
 
   const update = useMutation({
@@ -90,7 +102,19 @@ export function useAccountActions() {
 
   const checkSessions = useMutation({
     mutationFn: (emails?: string[]) => api.checkSessions(emails),
-    onSuccess: (result) => {
+    onMutate: (emails) => {
+      // Sticky, cancellable: a check walks the list and can take a while.
+      const id = push({
+        kind: "info",
+        title: "正在检测会话",
+        detail: `${emails?.length ?? 0} 个账号`,
+        sticky: true,
+        onCancel: () => void api.cancelCheck(),
+      });
+      return { toastId: id };
+    },
+    onSuccess: (result, _emails, ctx) => {
+      if (ctx?.toastId) dismiss(ctx.toastId);
       invalidate();
       const offline = result.results.filter((r) => !r.ok).length;
       push({
@@ -99,7 +123,10 @@ export function useAccountActions() {
         detail: `${result.results.length} 个账号，${offline} 个掉线`,
       });
     },
-    onError: (err: Error) => push({ kind: "error", title: "检测失败", detail: err.message }),
+    onError: (err: Error, _emails, ctx) => {
+      if (ctx?.toastId) dismiss(ctx.toastId);
+      push({ kind: "error", title: "检测失败", detail: err.message });
+    },
   });
 
   const fetchBilling = useMutation({

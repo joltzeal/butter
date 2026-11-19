@@ -3,7 +3,7 @@ import type { Toast } from "../lib/types";
 
 interface ToastValue {
   toasts: Toast[];
-  push: (toast: Omit<Toast, "id">) => void;
+  push: (toast: Omit<Toast, "id">) => number;
   dismiss: (id: number) => void;
 }
 
@@ -23,7 +23,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       seq += 1;
       const id = seq;
       setToasts((prev) => [...prev.slice(-3), { ...toast, id }]);
-      window.setTimeout(() => dismiss(id), toast.kind === "error" ? 7000 : 4200);
+      if (!toast.sticky) {
+        window.setTimeout(() => dismiss(id), toast.kind === "error" ? 7000 : 4200);
+      }
+      return id;
     },
     [dismiss],
   );

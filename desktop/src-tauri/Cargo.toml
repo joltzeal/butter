@@ -1,6 +1,6 @@
 [package]
 name = "butter"
-version = "0.1.10"
+version = "0.1.11"
 description = "Butter — Apple ID / Store billing console"
 authors = ["ameno"]
 edition = "2021"

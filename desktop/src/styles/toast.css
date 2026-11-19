@@ -1,6 +1,7 @@
 .toasts {
+  /* Bottom-left: the action bar lives bottom-right and the toasts covered it. */
   position: fixed;
-  right: 18px;
+  left: 18px;
   bottom: 18px;
   z-index: 90;
   display: flex;
@@ -88,7 +89,7 @@
 /* Long-running job indicator (login / relogin / bulk import) ------------ */
 .job-indicator {
   position: fixed;
-  right: 18px;
+  left: 18px;
   bottom: 18px;
   z-index: 60;
   display: flex;
@@ -102,6 +103,29 @@
   backdrop-filter: blur(14px) saturate(1.1);
   color: var(--amber);
   animation: job-in 0.18s ease-out;
+}
+
+.job-indicator__close {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.job-indicator__close:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.job-indicator__close svg {
+  width: 12px;
+  height: 12px;
 }
 
 .job-indicator__body {

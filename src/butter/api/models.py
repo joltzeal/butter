@@ -31,6 +31,8 @@ class AccountOut(BaseModel):
     card_suffix: str = ""
     billing_updated_at: str = ""
     code_url: str = ""
+    # True while the login is parked waiting for a 2FA code.
+    awaiting_hsa2: bool = False
 
 
 class LoginIn(BaseModel):

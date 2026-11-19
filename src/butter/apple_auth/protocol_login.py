@@ -94,6 +94,9 @@ def _run_sync(email: str, password: str, proxy: str | None,
     # Fetch the code *before* the auth prefetch: the two calls are independent
     # and the code endpoint is the second-slowest hop (~2s).
     if not code and code_url:
+        # Short budget: with no code in hand the operator is blocked, and the
+        # dialog can only open once this returns. A device-OTP account with no
+        # SMS never produces a code here at all.
         try:
             code = fetch_code(code_url)
         except Exception as exc:  # noqa: BLE001

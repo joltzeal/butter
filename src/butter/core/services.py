@@ -153,6 +153,8 @@ class Services:
         self._locks: dict[str, asyncio.Lock] = {}
         # Emails mid-login; the liveness poll skips them.
         self._busy: set[str] = set()
+        self._cancel_check = False
+        self._check_running = False
         # Imported lazily: session.py imports core.store, so a module-level
         # import here would close the cycle.
         from ..apple_auth.session import SessionManager
@@ -213,6 +215,9 @@ class Services:
             account.note = request.note
         if request.code_url:
             account.code_url = request.code_url
+        # Persist up front: the account has to be visible in the list while the
+        # login waits for a code, or the UI cannot surface the pending state.
+        self.store.upsert(account)
         attempts = retries or max(1, self.settings.retry_attempts)
         last_error = ""
 
@@ -726,13 +731,26 @@ class Services:
         if not emails:
             return {"ok": False, "results": [], "message": "请先勾选要检测的账号"}
         targets = emails[: top or self.settings.session_check_top]
+        self._cancel_check = False
+        self._check_running = True
         results = []
         for email in targets:
+            if self._cancel_check:
+                LOGGER.info("[session] 检测已取消")
+                break
             self._emit("session.progress", email=email)
             results.append({"email": email, **await self.check_session(email)})
             await asyncio.sleep(0.4)
+        self._check_running = False
         self._emit("session.done", count=len(results), offline=sum(1 for r in results if not r.get("ok")))
         return {"ok": True, "results": results}
+
+    def cancel_check(self) -> bool:
+        """Ask a running session check to stop after the current account."""
+        if not getattr(self, "_check_running", False):
+            return False
+        self._cancel_check = True
+        return True
 
     async def batch_relogin(self, emails: list[str] | None = None) -> dict[str, Any]:
         # Never fan out to every account implicitly: a batch login costs a full

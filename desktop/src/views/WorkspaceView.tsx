@@ -592,6 +592,13 @@ export function WorkspaceView() {
         onClose={() => setAddOpen(false)}
         onSubmit={async (payload) => {
           setAddOpen(false);
+          try {
+            // Row first, login second — so the account exists even if 2FA is
+            // abandoned, and a duplicate is caught before any request to Apple.
+            await actions.create.mutateAsync(payload);
+          } catch {
+            return; // create() already raised the toast
+          }
           actions.login.mutate(payload);
         }}
       />

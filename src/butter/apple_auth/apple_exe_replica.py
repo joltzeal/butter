@@ -794,10 +794,11 @@ class IdmsaClient:
         return out
 
 
-def fetch_code(url: str, retries: int = 5, interval: float = 2.0) -> str | None:
+def fetch_code(url: str, retries: int = 2, interval: float = 1.2,
+               timeout: float = 6.0) -> str | None:
     for i in range(retries):
         try:
-            r = creq.get(url, impersonate="chrome", verify=False, timeout=20)
+            r = creq.get(url, impersonate="chrome", verify=False, timeout=timeout)
             m = re.search(r"\b(\d{6})\b", r.text or "")
             if m:
                 return m.group(1)

@@ -103,15 +103,19 @@ class AppState:
         future: asyncio.Future[str | None] = loop.create_future()
         self.pending_hsa2[email.lower()] = future
         # ``reason`` tells the dialog why the automatic fetch did not happen.
+        LOGGER.info("[hsa2] 等待验证码 %s (clients=%s)", email, len(self.hub._clients))
         await self.hub.send("login.hsa2", {"email": email, "reason": reason})
         try:
-            return await asyncio.wait_for(future, timeout=300)
+            code = await asyncio.wait_for(future, timeout=300)
+            LOGGER.info("[hsa2] 结束 %s -> %s", email, code or "取消/超时")
+            return code
         except TimeoutError:
             return None
         finally:
             self.pending_hsa2.pop(email.lower(), None)
 
     def submit_hsa2(self, email: str, code: str) -> bool:
+        LOGGER.info("[hsa2] submit %s code=%r", email, code)
         future = self.pending_hsa2.get(email.lower())
         if future and not future.done():
             future.set_result(code)
@@ -180,6 +184,27 @@ def create_app() -> FastAPI:
             "fingerprint_pinned": bool(fp.pinned()),
         }
 
+    @app.post("/api/sessions/check/cancel")
+    async def cancel_check() -> dict[str, Any]:
+        ok = get_state().services.cancel_check()
+        return {"ok": ok, "message": "已取消" if ok else "没有运行中的检测"}
+
+    @app.post("/api/accounts/{email}/login/cancel")
+    async def cancel_login(email: str) -> dict[str, Any]:
+        """Abort the step the login is waiting on.
+
+        Resolving the pending 2FA future makes ``_await_hsa2`` return None, which
+        the login treats as "cancelled" and unwinds normally.
+        """
+        st = get_state()
+        LOGGER.info("[hsa2] cancel %s", email)
+        future = st.pending_hsa2.pop(email.lower(), None)
+        if future is not None and not future.done():
+            future.set_result(None)
+            st.services._mark_busy(email, False)
+            return {"ok": True, "message": "已取消"}
+        return {"ok": False, "message": "没有等待中的登录"}
+
     @app.get("/api/version")
     async def version() -> dict[str, str]:
         from .. import __version__ as ver
@@ -189,14 +214,26 @@ def create_app() -> FastAPI:
     @app.get("/api/accounts", response_model=list[AccountOut])
     async def list_accounts() -> list[AccountOut]:
         st = get_state()
-        return [st.serialize(a) for a in st.store.accounts]
+        out = []
+        for account in st.store.accounts:
+            payload = st.serialize(account)
+            payload.awaiting_hsa2 = account.email.lower() in st.pending_hsa2
+            out.append(payload)
+        return out
 
     @app.post("/api/accounts", response_model=AccountOut)
     async def create_account(payload: AccountIn) -> AccountOut:
         st = get_state()
-        account = Account(email=payload.email.strip(), password=payload.password, note=payload.note)
-        if not account.email:
+        email = payload.email.strip()
+        if not email:
             raise HTTPException(400, "email required")
+        # Case-insensitive: Apple IDs are not case sensitive, and a second row
+        # for the same person would split their session and billing state.
+        if any(a.email.lower() == email.lower() for a in st.store.accounts):
+            raise HTTPException(409, f"{email} 已在列表中")
+        account = Account(email=email, password=payload.password, note=payload.note)
+        # Write first, then let the login run: the row must exist even if the
+        # login never completes (2FA abandoned, wrong password).
         st.store.upsert(account)
         return st.serialize(account)
 
@@ -227,6 +264,9 @@ def create_app() -> FastAPI:
     @app.post("/api/accounts/login")
     async def login(payload: LoginIn) -> dict[str, Any]:
         st = get_state()
+        if st.services._is_busy(payload.email.strip()):
+            # A second attempt would overwrite pending_hsa2 and strand the first.
+            return {"ok": False, "message": "该账号正在登录中"}
         result = await st.services.login(
             LoginRequest(
                 email=payload.email.strip(),

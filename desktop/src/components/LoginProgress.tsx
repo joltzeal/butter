@@ -1,6 +1,7 @@
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useRealtime } from "../hooks/useRealtime";
+import { useOptionalApi, useRealtime } from "../hooks/useRealtime";
+import { useToasts } from "../hooks/useToasts";
 
 /** Operator-facing wording for each backend stage. No internals leak out. */
 const STAGE_LABEL: Record<string, string> = {
@@ -30,6 +31,8 @@ interface Progress {
  */
 export function LoginProgress() {
   const { lastEvent } = useRealtime();
+  const api = useOptionalApi();
+  const { push } = useToasts();
   const [job, setJob] = useState<Progress | null>(null);
 
   useEffect(() => {
@@ -70,6 +73,21 @@ export function LoginProgress() {
 
   if (!job) return null;
 
+  const cancel = async () => {
+    const email = job.email;
+    setJob(null);
+    try {
+      const result = await api?.cancelLogin(email);
+      push({
+        kind: "info",
+        title: result?.ok ? "已取消" : "没有可取消的步骤",
+        detail: result?.ok ? email : "流程可能已经结束",
+      });
+    } catch (err) {
+      push({ kind: "error", title: "取消失败", detail: String(err) });
+    }
+  };
+
   const label = STAGE_LABEL[job.stage] ?? "正在处理";
   const counter =
     job.index !== undefined && job.total !== undefined ? `${job.index}/${job.total}` : "";
@@ -84,6 +102,9 @@ export function LoginProgress() {
           {job.email}
         </span>
       </div>
+      <button className="job-indicator__close" onClick={() => void cancel()} aria-label="取消">
+        <X />
+      </button>
     </div>
   );
 }

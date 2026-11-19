@@ -174,7 +174,14 @@ export function Toasts({
   toasts,
   dismiss,
 }: {
-  toasts: Array<{ id: number; kind: "ok" | "error" | "info"; title: string; detail?: string }>;
+  toasts: Array<{
+    id: number;
+    kind: "ok" | "error" | "info";
+    title: string;
+    detail?: string;
+    /** Closing also aborts whatever the toast is reporting on. */
+    onCancel?: () => void;
+  }>;
   dismiss: (id: number) => void;
 }) {
   return (
@@ -186,7 +193,14 @@ export function Toasts({
             <strong>{toast.title}</strong>
             {toast.detail ? <span>{toast.detail}</span> : null}
           </div>
-          <button className="toast__close" onClick={() => dismiss(toast.id)} aria-label="关闭">
+          <button
+            className="toast__close"
+            onClick={() => {
+              dismiss(toast.id);
+              toast.onCancel?.();
+            }}
+            aria-label={toast.onCancel ? "取消" : "关闭"}
+          >
             <X />
           </button>
         </div>

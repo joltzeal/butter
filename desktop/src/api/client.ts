@@ -15,6 +15,7 @@ export interface Account {
   billing_checked: boolean;
   has_card: boolean;
   card_suffix: string;
+  awaiting_hsa2?: boolean;
   billing_updated_at: string;
   /** Endpoint that yields the 2FA code; empty means ask the operator. */
   code_url?: string;
@@ -284,6 +285,17 @@ export class Api {
       method: "POST",
       body: JSON.stringify(payload),
     });
+
+  cancelCheck = () =>
+    this.request<{ ok: boolean; message?: string }>("/api/sessions/check/cancel", {
+      method: "POST",
+    });
+
+  cancelLogin = (email: string) =>
+    this.request<{ ok: boolean; message?: string }>(
+      `/api/accounts/${encodeURIComponent(email)}/login/cancel`,
+      { method: "POST" },
+    );
 
   submitHsa2 = (email: string, code: string) =>
     this.request<{ accepted: boolean }>(`/api/accounts/${encodeURIComponent(email)}/hsa2`, {
