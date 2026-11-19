@@ -1,15 +1,15 @@
-import { Delete, KeyRound, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { KeyRound, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/ui";
 
-const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
+const CODE_LENGTH = 6;
 
 /**
- * Six-digit 2FA entry with an on-screen keypad.
+ * Two-factor code entry.
  *
- * Shown when the login stops at HSA2 and no usable ``code_url`` was available —
- * the operator reads the code off their device and taps it in. Physical
- * keyboard input keeps working alongside the pad.
+ * Shown when the login stops at HSA2 and no usable ``code_url`` was available:
+ * the operator reads the code off their device and types it. A plain field, not
+ * an on-screen keypad — the code is six digits and the keyboard is right there.
  */
 export function Hsa2Dialog({
   open,
@@ -27,49 +27,31 @@ export function Hsa2Dialog({
 }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setCode("");
-      setBusy(false);
-    }
-  }, [open]);
+  const [touched, setTouched] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (/^\d$/.test(event.key)) {
-        setCode((prev) => (prev + event.key).slice(0, 6));
-      } else if (event.key === "Backspace") {
-        setCode((prev) => prev.slice(0, -1));
-      } else if (event.key === "Enter") {
-        void submit();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
+    setCode("");
+    setBusy(false);
+    setTouched(false);
+    // The dialog is the only thing on screen; focus belongs in the field.
+    window.setTimeout(() => input.current?.focus(), 30);
+  }, [open]);
 
   if (!open) return null;
 
+  const valid = new RegExp(`^\\d{${CODE_LENGTH}}$`).test(code);
+
   const submit = async () => {
-    if (code.length < 6 || busy) return;
+    setTouched(true);
+    if (!valid || busy) return;
     setBusy(true);
     try {
       await onSubmit(code);
     } finally {
       setBusy(false);
     }
-  };
-
-  const press = (key: string) => {
-    if (busy) return;
-    if (key === "del") {
-      setCode((prev) => prev.slice(0, -1));
-      return;
-    }
-    if (!key) return;
-    setCode((prev) => (prev.length >= 6 ? prev : prev + key));
   };
 
   return (
@@ -103,34 +85,37 @@ export function Hsa2Dialog({
             </div>
           ) : null}
 
-          <div className="code-display">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <span key={index} className="code-display__slot" data-filled={index < code.length}>
-                {code[index] ?? ""}
-              </span>
-            ))}
-          </div>
-
-          <div className="keypad">
-            {KEYS.map((key, index) => {
-              if (!key) return <span key={index} />;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  className="keypad__key"
-                  data-variant={key === "del" ? "del" : undefined}
-                  onClick={() => press(key)}
-                  disabled={busy}
-                >
-                  {key === "del" ? <Delete style={{ width: 17 }} /> : key}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="dim tiny" style={{ textAlign: "center", marginTop: 10, lineHeight: 1.6 }}>
-            5 分钟内有效，连续错误 3 次需重新登录
+          <input
+            ref={input}
+            value={code}
+            onChange={(event) => {
+              // Digits only, length-capped: paste of "123 456" still works.
+              setCode(event.target.value.replace(/\D/g, "").slice(0, CODE_LENGTH));
+              setTouched(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void submit();
+            }}
+            onBlur={() => setTouched(true)}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="000000"
+            aria-label="六位验证码"
+            data-invalid={touched && code.length > 0 && !valid ? "true" : undefined}
+            style={{
+              width: "100%",
+              height: 42,
+              textAlign: "center",
+              letterSpacing: "0.42em",
+              fontSize: 19,
+              fontVariantNumeric: "tabular-nums",
+              fontFamily: "var(--font-mono)",
+            }}
+          />
+          <div className="dim tiny" style={{ marginTop: 8, lineHeight: 1.6 }}>
+            {touched && code.length > 0 && !valid
+              ? `还差 ${CODE_LENGTH - code.length} 位，需 ${CODE_LENGTH} 位数字`
+              : "6 位数字 · 5 分钟内有效，连续错误 3 次需重新登录"}
           </div>
         </div>
 
@@ -138,7 +123,7 @@ export function Hsa2Dialog({
           <Button variant="ghost" onClick={onCancel}>
             取消
           </Button>
-          <Button variant="primary" onClick={submit} disabled={busy || code.length < 6}>
+          <Button variant="primary" onClick={submit} disabled={busy || !valid}>
             {busy ? "验证中…" : "提交"}
           </Button>
         </footer>

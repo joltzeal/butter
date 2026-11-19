@@ -304,74 +304,10 @@
   padding: 12px;
 }
 
-/* 2FA entry: six slots + on-screen keypad ------------------------------- */
-.code-display {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-.code-display__slot {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 52px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--bg-inset);
-  font-family: var(--font-mono);
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--text);
-  transition: border-color 0.14s ease, background 0.14s ease;
-}
-
-.code-display__slot[data-filled="true"] {
-  border-color: var(--amber-line);
-  background: var(--amber-soft);
-}
-
-.keypad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  max-width: 260px;
-  margin: 0 auto;
-}
-
-.keypad__key {
-  height: 46px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--bg-panel);
-  color: var(--text);
-  font-size: 17px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  transition: background 0.12s ease, transform 0.06s ease, border-color 0.12s ease;
-}
-
-.keypad__key:hover:not(:disabled) {
-  background: var(--bg-inset);
-  border-color: var(--line-strong);
-}
-
-.keypad__key:active:not(:disabled) {
-  transform: scale(0.96);
-  background: var(--amber-soft);
-}
-
-.keypad__key:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.keypad__key[data-variant="del"] {
-  color: var(--text-muted);
+/* 2FA entry: single field ------------------------------------------------ */
+.modal__body input[data-invalid="true"] {
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
 .placeholder-view {
