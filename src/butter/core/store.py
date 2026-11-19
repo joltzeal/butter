@@ -137,7 +137,6 @@ class Account:
     billing_updated_at: str = ""
     # Last successfully read billing payload, so the UI can paint instantly and
     # only refresh in the background.
-    billing_cache: dict[str, Any] = field(default_factory=dict)
     # Last store host that actually answered; skips the warmup walk next time.
     store_base: str = ""
 

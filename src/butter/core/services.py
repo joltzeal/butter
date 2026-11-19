@@ -346,7 +346,6 @@ class Services:
             account.has_card = bool(info.get("has_card"))
             account.card_suffix = str(info.get("card_suffix") or "")
             account.billing_updated_at = _now()
-            account.billing_cache = dict(info)
             account.logged_in = True
             account.status = "online"
             self.store.save()
@@ -513,6 +512,22 @@ class Services:
                 return
             if not ok:
                 LOGGER.info("[login] 后台 store 握手未成功 %s", email)
+            # Refresh the cache so the panel shows reality instead of the empty
+            # shell a previous failed read may have left behind.
+            live = self.sessions.live_client(email)
+            if live is not None and ok:
+                try:
+                    info = await asyncio.to_thread(live.fetch_billing_info)
+                    account_now = self.store.get(email)
+                    if account_now is not None:
+                        account_now.has_card = bool(info.get("has_card"))
+                        account_now.card_suffix = str(info.get("card_suffix") or "")
+                        account_now.billing_checked = True
+                        self.store.save()
+                        self._emit("billing.fetched", email=email, info=info)
+                except Exception as exc:  # noqa: BLE001 - best effort
+                    LOGGER.info("[login] 登录后读账单失败 %s: %s", email, exc)
+
             stk_now = getattr(getattr(client, "state", None), "stk", "") or \
                 getattr(client, "stk", "") or ""
             self.sessions.save(email, client.s, stk=stk_now,
@@ -675,7 +690,6 @@ class Services:
         account.card_suffix = str(info.get("card_suffix") or "")
         account.billing_checked = True
         account.billing_updated_at = _now()
-        account.billing_cache = dict(info)
         account.store_base = getattr(client, "base", "")
         self.store.save()
         self.sessions.save(account.email, session, stk=client.stk or "",

@@ -31,8 +31,6 @@ class AccountOut(BaseModel):
     card_suffix: str = ""
     billing_updated_at: str = ""
     code_url: str = ""
-    # Last verified billing payload, so the UI can paint without a network call.
-    billing_cache: dict = {}
 
 
 class LoginIn(BaseModel):

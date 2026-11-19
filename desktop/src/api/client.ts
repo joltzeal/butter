@@ -18,7 +18,6 @@ export interface Account {
   billing_updated_at: string;
   /** Endpoint that yields the 2FA code; empty means ask the operator. */
   code_url?: string;
-  billing_cache?: BillingInfo | null;
 }
 
 export interface BulkLineError {

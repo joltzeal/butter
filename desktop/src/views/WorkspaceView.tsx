@@ -127,36 +127,13 @@ export function WorkspaceView() {
 
   // Selection paints the cache if there is one; otherwise the peek panel shows
   // a button and no request is made until it is pressed.
-  const cacheKey = current ? JSON.stringify(current.billing_cache ?? {}) : "";
+  // No cache painting: selecting an account always shows the veil until a real
+  // read lands, so what is on screen is exactly what the server answered.
   useEffect(() => {
-    if (!current) {
-      setInfo(null);
-      setForm({ ...EMPTY });
-      return;
-    }
-    const cached = current.billing_cache;
-    if (cached && Object.keys(cached).length) {
-      setInfo(cached);
-      setForm(toForm(cached));
-    } else {
-      setInfo(null);
-      setForm({ ...EMPTY });
-    }
-    // Keyed on the serialised cache: a refetch returns an equal but newly
-    // allocated object, and depending on identity wiped the form mid-edit.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.email, cacheKey]);
+    setInfo(null);
+    setForm({ ...EMPTY });
+  }, [selected]);
 
-  // The backend raises login.hsa2 whenever a login needs a code typed in.
-  useEffect(() => {
-    if (lastEvent?.event !== "login.hsa2") return;
-    const email = String(lastEvent.payload.email ?? "");
-    if (!email) return;
-    setHsa2Email(email);
-    setHsa2Reason(String(lastEvent.payload.reason ?? ""));
-  }, [lastEvent]);
-
-  // The backend poll flips status on its own; pull the list so the badge moves.
   useEffect(() => {
     if (lastEvent?.event !== "account.status") return;
     void refetch();

@@ -185,11 +185,6 @@ class SessionManager:
         return True
 
     # --- billing ----------------------------------------------------------
-    def cached_billing(self, email: str) -> dict[str, Any]:
-        """Last known billing payload, for instant paint before a refresh."""
-        account = self.store.get(email)
-        return dict(getattr(account, "billing_cache", {}) or {}) if account else {}
-
     async def fetch_billing(self, email: str, proxy: str | None = None,
                             prefer_cache: bool = False) -> dict[str, Any]:
         """Resume the saved session and read the billing summary.
@@ -238,7 +233,6 @@ class SessionManager:
             account.has_card = info["has_card"]
             account.card_suffix = info["card_suffix"]
             account.billing_updated_at = _now()
-            account.billing_cache = dict(info)
             self.store.upsert(account)
         LOGGER.info("[session] 账单 %s | has_card=%s suffix=%s", email,
                     info["has_card"], info["card_suffix"] or "-")
