@@ -9,8 +9,7 @@ import { RealtimeProvider, useRealtime } from "./hooks/useRealtime";
 import { ToastProvider, useToasts } from "./hooks/useToasts";
 import { useAccounts } from "./hooks/useAccounts";
 import type { ViewId } from "./lib/types";
-import { AccountsView } from "./views/AccountsView";
-import { BillingView } from "./views/BillingView";
+import { WorkspaceView } from "./views/WorkspaceView";
 import { LogsView } from "./views/LogsView";
 import { NetworkView } from "./views/NetworkView";
 import { SettingsView } from "./views/SettingsView";
@@ -33,9 +32,9 @@ function Overlay() {
 }
 
 function BootScreen() {
-  const { state, error, reconnect } = useRealtime();
+  const { state, error, reconnect, ready } = useRealtime();
 
-  if (state === "online") return null;
+  if (state === "online" || ready) return null;
 
   return (
     <div
@@ -90,7 +89,6 @@ function BootScreen() {
 function Workspace() {
   const [view, setView] = useState<ViewId>("accounts");
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [billingTarget, setBillingTarget] = useState<string | null>(null);
   const { data } = useAccounts();
 
   useEffect(() => {
@@ -121,8 +119,7 @@ function Workspace() {
         <Rail view={view} onChange={setView} counts={counts} />
         <main style={{ minWidth: 0, minHeight: 0, display: "flex" }}>
           <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-            {view === "accounts" ? <AccountsView /> : null}
-            {view === "billing" ? <BillingView initialEmail={billingTarget} /> : null}
+            {view === "accounts" ? <WorkspaceView /> : null}
             {view === "network" ? <NetworkView /> : null}
             {view === "logs" ? <LogsView /> : null}
             {view === "settings" ? <SettingsView /> : null}
@@ -132,10 +129,7 @@ function Workspace() {
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
-        onNavigate={(next) => {
-          setView(next);
-          if (next === "billing") setBillingTarget(null);
-        }}
+        onNavigate={setView}
       />
       <Overlay />
     </div>

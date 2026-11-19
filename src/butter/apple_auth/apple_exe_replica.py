@@ -568,6 +568,35 @@ class IdmsaClient:
         0x14d6b22 — 这是 authx 能成功的关键。
         GET account/home → ssi → GET signIn 页取 stk → POST authx → as_disa
         """
+        # 0) 已经有可用的 as_disa 就不再签发一次：重复 authx 会 541，而且
+        #    每次都要服务端跑 9 秒。
+        have = {c.name: c.value for c in self.s.cookies.jar}.get("as_disa")
+        if have:
+            probe = self.s.post(f"{self.store_base}/shop/accounthomex"
+                                "?_a=fetchCustomerAccount&_m=home.customerAccount",
+                                headers={"Accept": "*/*", "syntax": "graviton",
+                                         "modelVersion": "v2", "X-Requested-With": "Fetch",
+                                         "x-aos-model-page": "RetailHome"},
+                                timeout=20)
+            try:
+                head = (probe.json() or {}).get("head") or {}
+            except Exception:  # noqa: BLE001
+                head = {}
+            if probe.status_code < 400 and head.get("status") == 200:
+                self.state.as_disa = have
+                self._log("[idmsa] as_disa 仍有效，跳过 authx")
+                return probe
+            # The stored as_disa is dead but still in the jar, which makes
+            # account/home answer 200 and swallow the ssi redirect. Drop the
+            # store-side cookies so the documented 302 path can run.
+            self._log("[idmsa] as_disa 已失效，清除 store 侧 cookie")
+            for c in list(self.s.cookies.jar):
+                if c.name.startswith("as_") or c.name == "shld_bt_ck":
+                    try:
+                        self.s.cookies.jar.clear(c.domain, c.path, c.name)
+                    except Exception:  # noqa: BLE001
+                        pass
+
         # 1) account/home 拿 ssi
         nav = {
             "Accept": ("text/html,application/xhtml+xml,application/xml;q=0.9,"
@@ -594,9 +623,19 @@ class IdmsaClient:
             self._log(f"[idmsa] account/home 2nd hop {r1b.status_code} loc={loc[:70]}")
             m = re.search(r"[?&]ssi=([^&\s]+)", loc)
         if not m:
-            self._log("[idmsa] account/home 没拿到 ssi")
-            return None
-        ssi = m.group(1)
+            # Already-authenticated sessions answer 200 on account/home and skip
+            # the redirect that carries ssi. Follow the page and recover ssi from
+            # wherever we land; the rest of the hop still works without it.
+            self._log("[idmsa] account/home 未给出 ssi，改从落地页提取")
+            landed = self.s.get(self.store_base + "/shop/account/home",
+                                headers=nav, allow_redirects=True, timeout=30)
+            m2 = re.search(r"[?&]ssi=([^&\s]+)", landed.url or "")
+            if m2:
+                ssi = m2.group(1)
+            else:
+                ssi = ""
+        else:
+            ssi = m.group(1)
         self.state.ssi = ssi
         base = self.store_base
         mm = re.match(r"(https://[^/]+)", loc)
@@ -604,7 +643,8 @@ class IdmsaClient:
             base = mm.group(1)
 
         # 2) signIn 页取 x-aos-stk
-        sign_in_url = f"{base}/shop/signIn/account?ssi={ssi}"
+        # An empty ssi must not be sent as a bare query param.
+        sign_in_url = f"{base}/shop/signIn/account" + (f"?ssi={ssi}" if ssi else "")
         # A bare ``text/html`` Accept makes the edge take a slow (~10s) path for
         # this 116 KB page; the full browser Accept list answers in ~0.3s.
         r2 = self.s.get(sign_in_url,
@@ -634,7 +674,7 @@ class IdmsaClient:
         # 3) shld PoW —— 必须先拿 shld_bt_ck，否则 authx 一律 541
         try:
             from .apple_shld_v3 import run_shld
-            ck = run_shld(self.s, base, ssi, verbose=self.verbose)
+            ck = run_shld(self.s, base, ssi, verbose=self.verbose) if ssi else None
             if ck:
                 self.state.shld_bt_ck = ck
             else:
@@ -659,7 +699,8 @@ class IdmsaClient:
         }
         if stk:
             ax_h["x-aos-stk"] = stk
-        r3 = self.s.post(f"{base}/shop/signIn/idms/authx?ssi={ssi}",
+        authx_url = f"{base}/shop/signIn/idms/authx" + (f"?ssi={ssi}" if ssi else "")
+        r3 = self.s.post(authx_url,
                          headers=ax_h, data="grantCode=", allow_redirects=False, timeout=30)
         self._log(f"[idmsa] authx status={r3.status_code}")
 

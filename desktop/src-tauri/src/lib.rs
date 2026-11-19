@@ -85,6 +85,15 @@ fn resolve_command(app: &tauri::AppHandle) -> Result<(PathBuf, Vec<String>), Str
         }
     }
 
+    // Debug builds prefer the working tree: the bundled sidecar in
+    // backend-dist is a stale snapshot, so editing Python had no effect until a
+    // full rebuild. Release builds keep using the shipped resource.
+    if cfg!(debug_assertions) {
+        if let Some(found) = resolve_from_source() {
+            return Ok(found);
+        }
+    }
+
     if let Ok(resource_dir) = app.path().resource_dir() {
         // Tauri nests `../../x` resources under `_up_/_up_/`; check both shapes.
         let candidates = [
@@ -102,6 +111,16 @@ fn resolve_command(app: &tauri::AppHandle) -> Result<(PathBuf, Vec<String>), Str
         }
     }
 
+    // Last resort: same walk-up as the debug path.
+    if let Some(found) = resolve_from_source() {
+        return Ok(found);
+    }
+
+    Err("未找到 Python 后端：请设置 BUTTER_BACKEND 或先执行 uv sync".into())
+}
+
+/// Locate the repo root above the CWD and run the package from ``src``.
+fn resolve_from_source() -> Option<(PathBuf, Vec<String>)> {
     // Developer fallback: walk up from the executable and from the CWD looking for
     // the repository root that holds the Python package.
     let mut roots: Vec<PathBuf> = Vec::new();
@@ -113,12 +132,23 @@ fn resolve_command(app: &tauri::AppHandle) -> Result<(PathBuf, Vec<String>), Str
     }
     for dir in roots {
         if dir.join("pyproject.toml").exists() && dir.join("src").join("butter").exists() {
-            let uv = which::which("uv").map_err(|_| "未找到 uv，无法启动 Python 后端".to_string())?;
-            return Ok((uv, vec!["run".into(), "--project".into(), dir.display().to_string(), "butter".into()]));
+            // Prefer the repo venv with src on PYTHONPATH. `uv run` executes the
+            // *installed* copy, so backend edits stayed invisible until a rebuild.
+            let venv_py = dir.join(".venv").join("bin").join("python");
+            if venv_py.exists() {
+                return Some((
+                    venv_py,
+                    vec![
+                        "-c".into(),
+                        "import sys;sys.path.insert(0,'src');from butter.server import main;main()".into(),
+                    ],
+                ));
+            }
+            let uv = which::which("uv").ok()?;
+            return Some((uv, vec!["run".into(), "--project".into(), dir.display().to_string(), "butter".into()]));
         }
     }
-
-    Err("未找到 Python 后端：请设置 BUTTER_BACKEND 或先执行 uv sync".into())
+    None
 }
 
 async fn wait_for_health(port: u16) -> bool {
@@ -144,6 +174,14 @@ async fn spawn_backend(app: tauri::AppHandle) -> Result<BackendInfo, String> {
     let port = portpicker::pick_unused_port().ok_or_else(|| "没有可用的本地端口".to_string())?;
 
     let mut cmd = Command::new(&program);
+    // Windows: the sidecar is a console binary, so spawning it opens a cmd
+    // window behind the app. CREATE_NO_WINDOW keeps only the webview visible.
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
     cmd.args(&args)
         .env("BUTTER_PORT", port.to_string())
         .env("PYTHONUNBUFFERED", "1")

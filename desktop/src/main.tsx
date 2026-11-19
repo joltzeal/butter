@@ -6,6 +6,7 @@ import "./styles/kit.css";
 import "./styles/toast.css";
 import "./styles/accounts.css";
 import "./styles/billing.css";
+import "./styles/workspace.css";
 import "./styles/views.css";
 import "./styles/fixes.css";
 

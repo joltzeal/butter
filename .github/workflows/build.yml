@@ -83,7 +83,7 @@ jobs:
 
       - name: Build backend sidecar
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --name butter-backend `
+          python -m PyInstaller --noconfirm --clean --onefile --noconsole --name butter-backend `
             --paths src --collect-all curl_cffi --collect-submodules uvicorn `
             --hidden-import uvicorn.logging `
             --hidden-import uvicorn.loops.auto `

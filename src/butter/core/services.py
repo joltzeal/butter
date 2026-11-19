@@ -151,6 +151,8 @@ class Services:
         self.hsa2_provider = hsa2_provider
         self.apply_fingerprint(self.settings.fd_client_info)
         self._locks: dict[str, asyncio.Lock] = {}
+        # Emails mid-login; the liveness poll skips them.
+        self._busy: set[str] = set()
         # Imported lazily: session.py imports core.store, so a module-level
         # import here would close the cycle.
         from ..apple_auth.session import SessionManager
@@ -167,6 +169,22 @@ class Services:
 
     def _lock(self, email: str) -> asyncio.Lock:
         return self._locks.setdefault(email.lower(), asyncio.Lock())
+
+    def _mark_busy(self, email: str, busy: bool) -> None:
+        """Flag an email as mid-login so the poller leaves its session alone.
+
+        The set lives on the instance: recreating it per call (a ``hasattr``
+        check on the wrong name) emptied it every time, so the guard never held
+        and the poll raced the login's authx.
+        """
+        key = email.lower()
+        if busy:
+            self._busy.add(key)
+        else:
+            self._busy.discard(key)
+
+    def _is_busy(self, email: str) -> bool:
+        return email.lower() in self._busy
 
     def _transport(self, email: str = "") -> Transport:
         proxy_url = self.proxy.socks_url()
@@ -201,6 +219,7 @@ class Services:
         # Verified protocol chain first (see PROTOCOL.md). The legacy async client
         # below is kept only as a fallback for accounts that need its repair path.
         self._emit("login.progress", email=account.email, attempt=1, stage="connect")
+        self._mark_busy(account.email, True)
         try:
             result = await protocol_login(
                 account.email,
@@ -245,6 +264,7 @@ class Services:
                 )
             except ProtocolLoginError as exc:
                 self._emit("login.done", email=account.email, ok=False, message=str(exc))
+                self._mark_busy(account.email, False)
                 return {"ok": False, "message": str(exc), "account": account.public()}
             result = retried
 
@@ -280,6 +300,8 @@ class Services:
                 # to this connection.
                 self._spawn_store_handshake(account.email, result.get("client") or _client)
         self._emit("login.done", email=account.email, ok=account.logged_in, message=result["message"])
+        if not result.get("store_pending"):
+            self._mark_busy(account.email, False)
         return {"ok": account.logged_in, "message": result["message"], "account": account.public()}
 
         return {"ok": False, "message": last_error or "登录失败", "account": account.public()}
@@ -363,62 +385,90 @@ class Services:
 
 
     # --- background keep-alive -------------------------------------------
-    def start_keepalive(self) -> None:
-        """Start the periodic session refresher (idempotent)."""
-        if getattr(self, "_keepalive_task", None) is not None:
+    def start_poll(self) -> None:
+        """Start the session liveness poller (idempotent)."""
+        if getattr(self, "_poll_task", None) is not None:
             return
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            LOGGER.debug("[keepalive] 无事件循环，未启动")
+            LOGGER.debug("[poll] 无事件循环，未启动")
             return
-        self._keepalive_task = loop.create_task(self._keepalive_loop())
-        LOGGER.info("[keepalive] 已启动，间隔 %s 分钟", self.settings.auto_refresh_minutes)
+        self._poll_task = loop.create_task(self._session_poll_loop())
+        LOGGER.info("[poll] 已启动 | 每 %s 秒", self.settings.session_poll_seconds)
 
-    def stop_keepalive(self) -> None:
-        task = getattr(self, "_keepalive_task", None)
+    def stop_poll(self) -> None:
+        task = getattr(self, "_poll_task", None)
         if task is not None:
             task.cancel()
-            self._keepalive_task = None
+            self._poll_task = None
 
-    async def _keepalive_loop(self) -> None:
-        """Keep store sessions warm.
+    async def _session_poll_loop(self) -> None:
+        """Liveness poll.
 
-        ``as_disa`` dies long before ``DES`` does, and every billing read then
-        pays a ~9s authx. Probing on an interval moves that cost off the user's
-        path: the session is already warm when they open the billing pane.
+        A billing session dies within minutes, and without this the list kept
+        showing "在线" for an account that could no longer answer. Each tick
+        sends one cheap RPC per live account and records what actually came
+        back; the UI follows the recorded status instead of guessing from
+        ``logged_in``, which only says a login once succeeded.
         """
+        self._poll_strikes: dict[str, int] = {}
         while True:
-            interval = max(2, int(self.settings.auto_refresh_minutes or 10)) * 60
-            await asyncio.sleep(interval)
-            if not self.settings.auto_refresh:
+            await asyncio.sleep(max(5, int(self.settings.session_poll_seconds or 20)))
+            if not self.settings.session_poll:
                 continue
-            targets = [a for a in self.store.accounts if a.logged_in]
-            for account in targets:
+            for account in [a for a in self.store.accounts if a.logged_in]:
+                # A login is mid-handshake; probing now would race its authx and
+                # rotate the x-aos-stk out from under it.
+                if self._is_busy(account.email):
+                    continue
                 try:
-                    await self._keepalive_one(account)
+                    async with self._lock(account.email):
+                        await self._poll_one(account)
                 except Exception as exc:  # noqa: BLE001 - never kill the loop
-                    LOGGER.info("[keepalive] %s 失败: %s", account.email, exc)
+                    LOGGER.debug("[poll] %s: %s", account.email, exc)
 
-    async def _keepalive_one(self, account: Account) -> None:
-        def work() -> bool:
-            client, owns = self._billing_client(account)
+    # One miss is noise; two in a row means the session is really gone.
+    _POLL_STRIKES = 2
+
+    async def _poll_one(self, account: Account) -> None:
+        def probe(handshake: bool) -> bool:
+            client = self.sessions.live_client(account.email)
+            if client is None:
+                return False
             try:
                 if client.alive_payload():
                     return True
-                if owns:
-                    client.warmup_with_retry()
+                if not handshake:
+                    return False
+                # A live-but-degraded session (rotated stk / expired as_disa) can
+                # still be revived in place; only then call it offline.
                 client.authenticate()
-                self.sessions.attach(account.email, client.s, client)
                 self.sessions.save(account.email, client.s, stk=client.stk or "",
                                    store_base=getattr(client, "base", ""))
-                return True
-            finally:
-                pass
+                return bool(client.alive_payload())
+            except Exception:  # noqa: BLE001 - any error means "not answering"
+                return False
 
-        ok = await asyncio.to_thread(work)
-        self._emit("keepalive.done", email=account.email, ok=ok)
-        LOGGER.info("[keepalive] %s -> %s", account.email, "ok" if ok else "fail")
+        alive = await asyncio.to_thread(probe, True)
+        if alive:
+            self._poll_strikes[account.email] = 0
+            if account.status != "online":
+                account.status = "online"
+                self.store.save()
+                self._emit("account.status", email=account.email, status="online")
+            return
+
+        self._poll_strikes[account.email] = self._poll_strikes.get(account.email, 0) + 1
+        if self._poll_strikes[account.email] < self._POLL_STRIKES:
+            return
+        if account.status == "offline":
+            return
+        account.status = "offline"
+        self.sessions.detach(account.email)
+        self.store.save()
+        self._emit("account.status", email=account.email, status="offline")
+        LOGGER.info("[poll] %s -> offline", account.email)
 
     def _spawn_store_handshake(self, email: str, client) -> None:
         """Finish the store handshake off the request path."""
@@ -436,6 +486,17 @@ class Services:
                     await asyncio.to_thread(acquire)
                     ok = bool(getattr(state, "as_disa", ""))
                     if ok:
+                        # authx rotates x-aos-stk and issues as_disa; the store
+                        # client still holds the pre-authx values, which answer
+                        # 541. Push the fresh ones onto it before anything probes.
+                        live = self.sessions.live_client(email)
+                        if live is not None:
+                            live.stk = getattr(state, "stk", "") or ""
+                            live.as_disa = getattr(state, "as_disa", "") or ""
+                            live.as_sfa = getattr(state, "as_sfa", "") or ""
+                            if getattr(client, "store_base", ""):
+                                live.base = client.store_base
+                    if ok:
                         self.sessions.save(
                             email,
                             client.s,
@@ -448,6 +509,7 @@ class Services:
                 LOGGER.info("[login] 后台 store 握手失败 %s: %s", email, exc)
                 self._emit("login.done", email=email, ok=True,
                            message="已登录（账单需要手动刷新）")
+                self._mark_busy(email, False)
                 return
             if not ok:
                 LOGGER.info("[login] 后台 store 握手未成功 %s", email)
@@ -456,6 +518,7 @@ class Services:
             self.sessions.save(email, client.s, stk=stk_now,
                                store_base=getattr(client, "store_base", "")
                                or getattr(client, "base", ""))
+            self._mark_busy(email, False)
             self._emit("login.done", email=email, ok=True,
                        message="已登录，账单可用")
 
@@ -525,14 +588,10 @@ class Services:
 
                 if form.remove_only:
                     self._emit("billing.progress", email=email, stage="remove")
-                    client._gcall("removeBillingDetails",
-                                  "home.customerAccount.billingInfo")
-                    account.has_card = False
-                    account.card_suffix = ""
-                    account.billing_updated_at = _now()
-                    self.store.save()
-                    self._emit("billing.updated", email=email, removed=True)
-                    return {"ok": True, "message": "已移除付款方式"}
+                    await asyncio.to_thread(client.remove_billing)
+                    return await self._confirm(account, client, session,
+                                               expected_card=None,
+                                               success="已移除付款方式")
 
                 # The card is encrypted with the key the overlay advertises.
                 self._emit("billing.progress", email=email, stage="rsa-config")
@@ -570,20 +629,11 @@ class Services:
                     (form.country_code or "US").upper(),
                 )
                 digits = form.card_number.replace(" ", "")
-                account.has_card = True
-                account.card_suffix = digits[-4:]
-                account.billing_checked = True
-                account.billing_updated_at = _now()
-                account.store_base = client.base
-                self.store.save()
-                self.sessions.save(account.email, session,
-                                   stk=client.stk or "", store_base=client.base)
-                self._emit("billing.updated", email=email, ok=True)
-                return {
-                    "ok": True,
-                    "message": f"账单已更新 · 尾号 {digits[-4:]}",
-                    "status": getattr(resp, "status_code", 200),
-                }
+                # The save response only says "accepted"; re-read to learn what
+                # the account actually holds now.
+                return await self._confirm(account, client, session,
+                                           expected_card=digits[-4:],
+                                           success=f"账单已更新 · 尾号 {digits[-4:]}")
             except Exception as exc:  # noqa: BLE001 - the caller shows the real reason
                 LOGGER.exception("update_billing failed")
                 message = str(exc) or exc.__class__.__name__
@@ -593,6 +643,46 @@ class Services:
                 if own_session:
                     with contextlib.suppress(Exception):
                         session.close()
+
+    async def _confirm(self, account: Account, client, session,
+                       expected_card: str | None, success: str) -> dict[str, Any]:
+        """Re-read after a mutation and report what the server really has.
+
+        A 200 on save only means "accepted". Without this the UI showed the form
+        values back as if the write had landed, which is how a rejected save
+        looked identical to a good one.
+        """
+        self._emit("billing.progress", email=account.email, stage="verify")
+        info = await asyncio.to_thread(client.fetch_billing_info)
+
+        if expected_card is None:
+            if info.get("has_card"):
+                return {
+                    "ok": False,
+                    "info": info,
+                    "message": "服务器仍报告有付款方式，移除未生效",
+                }
+        elif not info.get("has_card"):
+            return {"ok": False, "info": info, "message": "保存后服务器上仍然没有付款方式"}
+        elif info.get("card_suffix") and info["card_suffix"] != expected_card:
+            return {
+                "ok": False,
+                "info": info,
+                "message": f"服务器上的卡号是 {info['card_suffix']}，不是 {expected_card}",
+            }
+
+        account.has_card = bool(info.get("has_card"))
+        account.card_suffix = str(info.get("card_suffix") or "")
+        account.billing_checked = True
+        account.billing_updated_at = _now()
+        account.billing_cache = dict(info)
+        account.store_base = getattr(client, "base", "")
+        self.store.save()
+        self.sessions.save(account.email, session, stk=client.stk or "",
+                           store_base=getattr(client, "base", ""))
+        self._emit("billing.updated", email=account.email, removed=expected_card is None)
+        return {"ok": True, "message": success, "info": info,
+                "account": account.public()}
 
     # --- session health ---------------------------------------------------
     async def check_session(self, email: str) -> dict[str, Any]:

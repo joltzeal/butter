@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Account, Api, BillingForm } from "../api/client";
 import { useOptionalApi, useRealtime } from "./useRealtime";
 import { useToasts } from "./useToasts";
@@ -13,6 +13,8 @@ export function useAccounts() {
     queryFn: () => api!.listAccounts(),
     enabled: state === "online" && Boolean(api),
     refetchOnWindowFocus: false,
+    // A background refetch (status poll, invalidation) must not blank the list.
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -129,7 +131,7 @@ export function useAccountActions() {
       invalidate();
       push({
         kind: result.ok ? "ok" : "error",
-        title: result.ok ? "账单已保存" : "账单被拒绝",
+        title: result.ok ? "账单已保存" : "账单未生效",
         detail: result.message,
       });
     },

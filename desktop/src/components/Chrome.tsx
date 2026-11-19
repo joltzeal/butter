@@ -1,12 +1,11 @@
 import { clsx } from "clsx";
-import { Globe2, Layers, ListOrdered, ScrollText, Settings2, ShieldCheck } from "lucide-react";
+import { Globe2, Layers, ListOrdered, ScrollText, Settings2 } from "lucide-react";
 import { useRealtime } from "../hooks/useRealtime";
 import { useSecretUnlock } from "../hooks/useSecretUnlock";
 import type { ViewId } from "../lib/types";
 
 const NAV: Array<{ id: ViewId; label: string; icon: typeof Globe2; hint: string }> = [
-  { id: "accounts", label: "账号", icon: ListOrdered, hint: "登录状态与批量操作" },
-  { id: "billing", label: "账单", icon: ShieldCheck, hint: "读取 / 修改 / 移除付款方式" },
+  { id: "accounts", label: "账号", icon: ListOrdered, hint: "账号与账单" },
   { id: "network", label: "网络", icon: Layers, hint: "代理链与落地线路" },
   { id: "logs", label: "事件", icon: ScrollText, hint: "实时操作流" },
   { id: "settings", label: "设置", icon: Settings2, hint: "行为与偏好" },
@@ -78,7 +77,6 @@ export function Rail({
             {item.id === "accounts" && counts.accounts ? (
               <span className="rail__count">{counts.accounts}</span>
             ) : null}
-            {item.id === "billing" && counts.cards ? <span className="rail__count">{counts.cards}</span> : null}
           </button>
         ))}
       </div>

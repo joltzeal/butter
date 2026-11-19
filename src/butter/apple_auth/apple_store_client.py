@@ -391,9 +391,14 @@ class StoreClient:
         return self.base
 
     def alive_payload(self) -> bool:
-        """Cheap authenticated call used to confirm the session before real work."""
+        """Cheap authenticated call used to confirm the session before real work.
+
+        Must use the ``?_a=&_m=`` query form. The body form answers 200 with every
+        pane replaced by "Information about … is currently unavailable", so using
+        it here reported a healthy session as dead.
+        """
         try:
-            resp = self._post("fetchDashboard", "home.dashboards")
+            resp = self._gcall("fetchCustomerAccount", "home.customerAccount")
         except Exception as exc:  # noqa: BLE001
             LOGGER.debug("[store] alive 失败: %s", exc)
             return False
@@ -406,7 +411,11 @@ class StoreClient:
         head = (payload or {}).get("head") or {}
         if head.get("status") in (302, 541):
             return False
-        return "SESSIONEXPIRY" not in json.dumps(payload or {})
+        if "SESSIONEXPIRY" in json.dumps(payload or {}):
+            return False
+        # A live session returns the account body; an empty one means "not really".
+        ca = ((payload.get("body") or {}).get("home") or {}).get("customerAccount")
+        return bool(ca)
 
     def prepare(self) -> bool:
         """warmup → authenticate → alive，账单调用前的固定前置。
@@ -628,14 +637,50 @@ class StoreClient:
         except Exception:  # noqa: BLE001
             payload = {"raw": (resp.text or "")[:400]}
 
-        head = (payload or {}).get("head") or {}
-        status = head.get("status")
-        if resp.status_code >= 400 or status not in (200, 201, None):
-            detail = head.get("data") or payload
-            raise StoreAuthError(f"保存账单失败 (status={status or resp.status_code}): {detail}")
+        payload = self._require_ok(resp, "保存账单")
         LOGGER.info("[store] saveBillingDetails ok | %s *%s %s",
                     card_type, digits[-4:], exp)
         return payload, resp
+
+    def _require_ok(self, resp, what: str) -> dict:
+        """Reject anything that is not a real 200.
+
+        The store answers a rejected mutation with a 303 to
+        ``/shop/accounthome/sorry?type=generic`` and an empty body. Treating that
+        as success is what produced "saved" toasts for changes that never landed.
+        """
+        location = resp.headers.get("location") or ""
+        if resp.status_code != 200:
+            raise StoreAuthError(
+                f"{what}被拒绝 (HTTP {resp.status_code}"
+                f"{', ' + location.split('?')[-1] if location else ''})"
+            )
+        try:
+            payload = resp.json()
+        except Exception as exc:  # noqa: BLE001
+            raise StoreAuthError(f"{what}返回非 JSON: {(resp.text or '')[:120]}") from exc
+        head = (payload or {}).get("head") or {}
+        if head.get("status") != 200:
+            detail = head.get("data") or (payload or {}).get("body") or ""
+            raise StoreAuthError(f"{what}失败 (head={head.get('status')}): {str(detail)[:160]}")
+        return payload
+
+    def remove_billing(self) -> dict:
+        """Delete the current payment method.
+
+        Removal is a confirmation step, not a plain call: the first
+        ``removeBillingDetails`` opens an overlay, and the overlay model is what
+        actually commits. Hitting ``...billingInfo`` alone answers 200 and leaves
+        the card in place, which read as a successful delete that never happened.
+        """
+        base = "home.customerAccount.billingInfo"
+        # 1) open the overlay (also returns the node that points at the commit URL)
+        self._gcall("removeBillingDetails", base)
+        # 2) commit through the overlay model
+        resp = self._gcall("removeBillingDetails", f"{base}.removeBillingDetailsOverlay")
+        payload = self._require_ok(resp, "移除账单")
+        LOGGER.info("[store] removeBillingDetails ok")
+        return payload
 
     # ---------- 4) 查询 ----------
     @staticmethod

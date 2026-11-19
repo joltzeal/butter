@@ -97,6 +97,8 @@ class SettingsIn(BaseModel):
     timezone: str | None = None
     session_auto_check: bool | None = None
     session_check_top: int | None = None
+    session_poll: bool | None = None
+    session_poll_seconds: int | None = None
     retry_attempts: int | None = None
     verbose_network_log: bool | None = None
     fd_client_info: str | None = None

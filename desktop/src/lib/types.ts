@@ -1,4 +1,4 @@
-export type ViewId = "accounts" | "billing" | "network" | "logs" | "settings";
+export type ViewId = "accounts" | "network" | "logs" | "settings";
 
 export interface Toast {
   id: number;

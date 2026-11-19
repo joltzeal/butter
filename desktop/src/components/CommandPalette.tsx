@@ -1,10 +1,9 @@
-import { Command, CreditCard, ListOrdered, Settings2 } from "lucide-react";
+import { Command, ListOrdered, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ViewId } from "../lib/types";
 
 const ITEMS: Array<{ id: ViewId; label: string; hint: string; icon: typeof ListOrdered }> = [
   { id: "accounts", label: "账号", hint: "账号列表与批量操作", icon: ListOrdered },
-  { id: "billing", label: "账单", hint: "读取 / 修改 / 移除付款方式", icon: CreditCard },
   { id: "settings", label: "设置", hint: "外观与行为", icon: Settings2 },
 ];
 

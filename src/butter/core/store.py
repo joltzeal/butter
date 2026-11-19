@@ -68,8 +68,10 @@ class Settings:
     session_check_top: int = 5
     # Background keep-alive: re-checks (and renews) the store session of online
     # accounts on an interval so a billing read never has to handshake first.
-    auto_refresh: bool = True
-    auto_refresh_minutes: int = 10
+    # Light liveness poll: only checks whether the session still answers, and
+    # flips the account to offline when it does not. Cheap, so it runs often.
+    session_poll: bool = True
+    session_poll_seconds: int = 20
     retry_attempts: int = 3
     verbose_network_log: bool = False
     # Byte-exact X-Apple-I-FD-Client-Info from a real browser (paste once).
@@ -100,6 +102,10 @@ class Settings:
             return self.clash_socks or None
         if self.proxy_mode == "mihomo":
             return "socks5h://127.0.0.1:7890"  # mihomo mixed port managed below
+        # A plain URL wins over the host/port fields: that is what "custom"
+        # means, and ignoring it silently fell back to a direct connection.
+        if self.proxy_url:
+            return self.proxy_url
         if not self.proxy_host:
             return None
         user = self.proxy_user

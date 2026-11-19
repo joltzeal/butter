@@ -140,12 +140,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         format="[%(asctime)s] [%(levelname)s] %(name)s: %(message)s",
     )
     state = AppState()
-    state.services.start_keepalive()
+    state.services.start_poll()
     LOGGER.info("butter backend ready | data=%s curl_cffi=%s", data_dir(), HAS_CURL_CFFI)
     try:
         yield
     finally:
-        state.services.stop_keepalive()
+        state.services.stop_poll()
         state.proxy.stop()
 
 

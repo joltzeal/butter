@@ -1,6 +1,6 @@
 [project]
 name = "butter"
-version = "0.1.4"
+version = "0.1.7"
 description = "Butter — Apple ID / Store billing console (Tauri + Python backend)"
 readme = "README.md"
 authors = [

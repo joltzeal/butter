@@ -18,7 +18,7 @@ python -m pip install --quiet -r requirements.txt 'pyinstaller>=6.10'
 
 Write-Host '==> Building sidecar' -ForegroundColor Cyan
 python -m PyInstaller `
-  --noconfirm --clean --onefile --name $Name --paths src `
+  --noconfirm --clean --onefile --noconsole --name $Name --paths src `
   --collect-all curl_cffi --collect-submodules uvicorn `
   --hidden-import uvicorn.logging `
   --hidden-import uvicorn.loops.auto `

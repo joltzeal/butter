@@ -38,7 +38,7 @@
   --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 18px 40px -24px rgba(0, 0, 0, 0.9);
   --shadow-pop: 0 24px 60px -28px rgba(0, 0, 0, 0.9), 0 2px 0 rgba(255, 255, 255, 0.04) inset;
 
-  --font-sans: "Inter var", "Inter", -apple-system, "SF Pro Text", "Segoe UI", "PingFang SC",
+  --font-sans: "Inter var", "Inter", -apple-system, "SF Pro Text", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, monospace;
 

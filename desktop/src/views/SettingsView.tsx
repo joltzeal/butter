@@ -81,32 +81,31 @@ export function SettingsView() {
       <Panel title="行为" className="settings-panel">
         <div className="setting-row" style={{ paddingTop: 0 }}>
           <div className="setting-row__text">
-            <strong>自动保活</strong>
-            <span>后台定期续期在线账号，打开账单时无需等待</span>
+            <strong>会话实时探活</strong>
+            <span>定期检查会话是否还可答，失效的账号立刻标记离线</span>
           </div>
           <div className="setting-row__control">
             <button
               className="switch"
-              data-on={settings.auto_refresh}
-              onClick={() => void patch({ auto_refresh: !settings.auto_refresh })}
+              data-on={settings.session_poll}
+              onClick={() => void patch({ session_poll: !settings.session_poll })}
               aria-label="toggle"
             />
           </div>
         </div>
         <div className="setting-row">
           <div className="setting-row__text">
-            <strong>保活间隔</strong>
-            <span>建议 10 分钟；间隔越短越耗流量</span>
+            <strong>探活间隔</strong>
+            <span>秒；只发一个轻量请求，可设得比较短</span>
           </div>
           <div className="setting-row__control">
             <input
               style={{ width: 80, textAlign: "right" }}
-              value={settings.auto_refresh_minutes}
+              value={settings.session_poll_seconds}
               inputMode="numeric"
               onChange={(event) =>
                 void patch({
-                  auto_refresh_minutes:
-                    Math.min(120, Math.max(2, Number(event.target.value.replace(/\D/g, "")) || 10)),
+                  session_poll_seconds: Math.min(300, Math.max(5, Number(event.target.value.replace(/\D/g, "")) || 20)),
                 })
               }
             />

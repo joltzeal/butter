@@ -1,6 +1,6 @@
 import { ClipboardPaste, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useApi } from "../hooks/useRealtime";
+import { useOptionalApi } from "../hooks/useRealtime";
 import { Button, Field } from "../components/ui";
 
 const FIELD_LABELS: Record<string, string> = {
@@ -29,7 +29,7 @@ export function PasteDialog({
   onClose: () => void;
   onApply: (fields: Record<string, string>) => void;
 }) {
-  const api = useApi();
+  const api = useOptionalApi();
   const [text, setText] = useState("");
   const [preview, setPreview] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +49,7 @@ export function PasteDialog({
     setBusy(true);
     setError(null);
     try {
+      if (!api) return;
       const result = await api.parsePaste(text);
       setPreview(result.fields);
       if (result.count === 0) setError("未识别到任何字段，请检查格式");
@@ -82,6 +83,7 @@ export function PasteDialog({
               const value = (event.target as HTMLTextAreaElement).value;
               if (value.trim().length < 6) return;
               try {
+                if (!api) return;
                 const result = await api.parsePaste(value);
                 setPreview(result.fields);
                 setError(null);

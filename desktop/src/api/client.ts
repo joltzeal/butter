@@ -53,6 +53,13 @@ export interface BillingInfo {
   display_card_type: string;
 }
 
+/** Mutation result; ``info`` is what the server held on re-read. */
+export interface BillingResult {
+  ok: boolean;
+  message?: string;
+  info?: BillingInfo | null;
+}
+
 export interface BillingForm {
   card_number: string;
   card_expiry: string;
@@ -108,8 +115,8 @@ export interface Settings {
   timezone: string;
   session_auto_check: boolean;
   session_check_top: number;
-  auto_refresh: boolean;
-  auto_refresh_minutes: number;
+  session_poll: boolean;
+  session_poll_seconds: number;
   retry_attempts: number;
   verbose_network_log: boolean;
   fd_client_info: string;
@@ -303,13 +310,13 @@ export class Api {
     );
 
   putBilling = (email: string, form: BillingForm) =>
-    this.request<{ ok: boolean; message?: string; session_expired?: boolean }>(
+    this.request<BillingResult>(
       `/api/accounts/${encodeURIComponent(email)}/billing`,
       { method: "PUT", body: JSON.stringify(form) },
     );
 
   deleteBilling = (email: string) =>
-    this.request<{ ok: boolean; message?: string }>(`/api/accounts/${encodeURIComponent(email)}/billing`, {
+    this.request<BillingResult>(`/api/accounts/${encodeURIComponent(email)}/billing`, {
       method: "DELETE",
     });
 

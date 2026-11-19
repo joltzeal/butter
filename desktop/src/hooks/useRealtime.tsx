@@ -11,6 +11,8 @@ interface RealtimeValue {
   events: EventEnvelope[];
   lastEvent: EventEnvelope | null;
   reconnect: () => void;
+  /** True once a connection has succeeded; the boot overlay stops after that. */
+  ready: boolean;
 }
 
 const RealtimeContext = createContext<RealtimeValue | null>(null);
@@ -25,6 +27,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [lastEvent, setLastEvent] = useState<EventEnvelope | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const retryRef = useRef(0);
+  // Once a connection has succeeded the app is usable, so the overlay only has
+  // to cover the very first attempt.
+  const everOnlineRef = useRef(false);
   const closedRef = useRef(false);
 
   const api = useMemo(() => (base ? new Api(base) : null), [base]);
@@ -46,6 +51,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
       socket.onopen = () => {
         retryRef.current = 0;
+        everOnlineRef.current = true;
         setState("online");
         setError(null);
       };
@@ -62,6 +68,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
       socket.onclose = () => {
         if (closedRef.current) return;
+        // A stale socket (StrictMode remount, or a reconnect that replaced it)
+        // must not drag the shared state to offline — that is what made the boot
+        // overlay strobe over a perfectly working UI.
+        if (socketRef.current !== socket) return;
         setState("offline");
         const delay = Math.min(8000, 500 * 2 ** retryRef.current);
         retryRef.current += 1;
@@ -108,6 +118,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       error,
       events,
       lastEvent,
+      ready: everOnlineRef.current,
       reconnect: () => {
         closedRef.current = true;
         socketRef.current?.close();
