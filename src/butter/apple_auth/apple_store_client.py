@@ -50,6 +50,7 @@ import json
 import logging
 import random
 import re
+import time
 import string
 from urllib.parse import urlparse
 
@@ -743,15 +744,44 @@ class StoreClient:
             "raw": {"billingInfo": info},
         }
 
-    def fetch_billing_info(self) -> dict:
-        """Read billing in a single RPC.
+    def fetch_billing_info(self, attempts: int = 3) -> dict:
+        """Read billing in a single RPC, retrying an empty shell.
 
         ``fetchCustomerAccount`` already carries address / contact / payment, so
         the dashboard call and the per-pane edit calls the page makes are pure
         overhead here: one request, ~0.45s warm.
+
+        The first call right after a session is established often answers 200
+        with an empty ``customerAccount`` while the edge primes the account;
+        parsing that as "no card" is what made the first click look empty and
+        the second one work. Retry until the payload actually carries billing.
         """
-        ca = self.fetch_customer_account()
-        info = self.parse_customer_billing(ca)
+        info: dict = {}
+        rebuilt = False
+        for attempt in range(max(1, attempts)):
+            ca = self.fetch_customer_account()
+            info = self.parse_customer_billing(ca)
+            bi = ca.get("billingInfo") or {}
+            primed = bool(bi) and any(
+                k in bi for k in ("billingAddress", "billingContact", "billingPaymentDetails")
+            )
+            LOGGER.debug("[store] 读账单第 %s 次为空 (ca=%s)", attempt, list(ca))
+            if primed:
+                break
+            # A card-less account still answers with the address block, so an
+            # empty shell means the session/host is wrong, not that there is no
+            # card. Rebuild once instead of retrying a broken host.
+            if attempt == 1 and not rebuilt:
+                rebuilt = True
+                try:
+                    self.authenticate()
+                except Exception as exc:  # noqa: BLE001 - keep retrying
+                    LOGGER.info("[store] 重建会话失败: %s", exc)
+            if attempt < attempts - 1:
+                # The edge needs a moment to prime the account after a session
+                # is minted; back off a little more each time.
+                time.sleep(0.6 * (attempt + 1))
+
         if not (ca.get("billingInfo") or {}).get("billingAddress"):
             err = (ca.get("error") or {})
             infos = (err.get("d") or {}).get("infos") or []
