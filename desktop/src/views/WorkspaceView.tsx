@@ -139,6 +139,25 @@ export function WorkspaceView() {
     void refetch();
   }, [lastEvent, refetch]);
 
+  // Open the code dialog as soon as a login parks on 2FA. The event is
+  // fire-and-forget, so the account list also carries the flag and the dialog
+  // opens from state — a reload or a late listener would otherwise miss it.
+  useEffect(() => {
+    if (lastEvent?.event === "login.hsa2") {
+      const email = String(lastEvent.payload.email ?? "");
+      if (email) {
+        setHsa2Email(email);
+        setHsa2Reason(String(lastEvent.payload.reason ?? ""));
+      }
+    }
+  }, [lastEvent]);
+
+  useEffect(() => {
+    if (hsa2Email) return;
+    const waiting = accounts.find((a) => a.awaiting_hsa2);
+    if (waiting) setHsa2Email(waiting.email);
+  }, [accounts, hsa2Email]);
+
   useEffect(() => {
     if (!lastEvent || !selected) return;
     if (lastEvent.event === "billing.fetched" && lastEvent.payload.email === selected) {

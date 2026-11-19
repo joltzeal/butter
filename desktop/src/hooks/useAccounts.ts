@@ -16,12 +16,9 @@ export function useAccounts() {
     refetchOnWindowFocus: false,
     // A background refetch (status poll, invalidation) must not blank the list.
     placeholderData: keepPreviousData,
-    // While a login waits for a 2FA code, watch the flag so a missed event still
-    // brings the dialog up.
-    refetchInterval: (query) => {
-      const rows = query.state.data as Account[] | undefined;
-      return rows?.some((a) => a.awaiting_hsa2) ? 2000 : false;
-    },
+    // Fixed cadence: the list is local and cheap, and a conditional interval
+    // deadlocks — the flag that would turn polling on only arrives with a poll.
+    refetchInterval: 2500,
   });
 }
 
