@@ -173,7 +173,7 @@ pub fn save(app: &AppHandle, payload: &str, sig: &str, checked: i64) -> Result<(
         .map_err(|e| e.to_string())
 }
 
-fn activation_url() -> String {
+pub fn activation_url() -> String {
     if let Ok(v) = std::env::var("BUTTER_ACTIVATION_URL") {
         if !v.is_empty() {
             return v;

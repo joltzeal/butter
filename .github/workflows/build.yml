@@ -45,6 +45,9 @@ jobs:
     name: build (windows installer)
     needs: test
     runs-on: windows-latest
+    env:
+      # Repo variable, so the endpoint is not hard-coded in the workflow.
+      ACTIVATION_URL: ${{ vars.BUTTER_ACTIVATION_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -86,12 +89,24 @@ jobs:
         shell: pwsh
 
 
+      - name: Check activation endpoint
+        shell: bash
+        run: |
+          if [ -z "$ACTIVATION_URL" ]; then
+            echo "::warning::vars.BUTTER_ACTIVATION_URL is empty — the build cannot activate"
+          else
+            echo "activation endpoint: $ACTIVATION_URL"
+          fi
+
       - name: Install frontend deps
         working-directory: desktop
         run: pnpm install --frozen-lockfile
 
       - name: Build installer
         working-directory: desktop
+        env:
+          VITE_ACTIVATION_URL: ${{ env.ACTIVATION_URL }}
+          BUTTER_ACTIVATION_URL: ${{ env.ACTIVATION_URL }}
         run: pnpm tauri build --bundles nsis
 
       - name: Collect artifacts
@@ -119,6 +134,8 @@ jobs:
     name: build (macos app)
     needs: test
     runs-on: macos-latest
+    env:
+      ACTIVATION_URL: ${{ vars.BUTTER_ACTIVATION_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -155,12 +172,24 @@ jobs:
       - name: Build backend sidecar
         run: ./scripts/build_sidecar.sh
 
+      - name: Check activation endpoint
+        shell: bash
+        run: |
+          if [ -z "$ACTIVATION_URL" ]; then
+            echo "::warning::vars.BUTTER_ACTIVATION_URL is empty — the build cannot activate"
+          else
+            echo "activation endpoint: $ACTIVATION_URL"
+          fi
+
       - name: Install frontend deps
         working-directory: desktop
         run: pnpm install --frozen-lockfile
 
       - name: Build app
         working-directory: desktop
+        env:
+          VITE_ACTIVATION_URL: ${{ env.ACTIVATION_URL }}
+          BUTTER_ACTIVATION_URL: ${{ env.ACTIVATION_URL }}
         run: pnpm tauri build --bundles app,dmg
 
       - name: Collect artifacts
