@@ -370,6 +370,11 @@ export class Api {
       body: JSON.stringify({ keyword, stride, group: group ?? "" }),
     });
 
+  license = () =>
+    this.request<{ licensed: boolean; plan: string; exp: number; free_limit: number }>(
+      "/api/license",
+    );
+
   version = () => this.request<{ version: string }>("/api/version");
 
   getSettings = () => this.request<Settings>("/api/settings");

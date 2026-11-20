@@ -184,8 +184,12 @@ async fn spawn_backend(app: tauri::AppHandle) -> Result<BackendInfo, String> {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
+    let status = license::evaluate(&app);
     cmd.args(&args)
         .env("BUTTER_PORT", port.to_string())
+        .env("BUTTER_LICENSED", if status.licensed { "1" } else { "0" })
+        .env("BUTTER_PLAN", status.plan.clone())
+        .env("BUTTER_EXP", status.exp.to_string())
         .env("PYTHONUNBUFFERED", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -302,6 +306,10 @@ async fn license_apply(
     license::save(&app, &payload, &sig, checked)?;
     let status = license::evaluate(&app);
     if status.licensed {
+        // Restart so the sidecar sees the new licence in its environment.
+        if let Some(state) = app.try_state::<BackendState>() {
+            stop_backend(&state);
+        }
         let handle = app.clone();
         tauri::async_runtime::spawn(async move {
             let _ = spawn_backend(handle).await;
@@ -325,17 +333,9 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+            // The backend runs either way: an unlicensed copy is limited to two
+            // accounts rather than dead, so the app is usable before buying.
             let status = license::evaluate(&handle);
-            if !status.licensed {
-                // No backend without a licence: the activation screen is enough.
-                if let Some(state) = handle.try_state::<BackendState>() {
-                    if let Ok(mut inner) = state.inner.lock() {
-                        push_log(&mut inner, format!("[shell] 未授权: {}", status.reason));
-                        inner.info.status = "unlicensed".into();
-                    }
-                }
-                return Ok(());
-            }
             let boot_handle = handle.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(err) = spawn_backend(boot_handle).await {

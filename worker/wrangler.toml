@@ -1,0 +1,12 @@
+name = "butter-activation"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Ed25519 via WebCrypto; needs the modern runtime flags.
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "butter-activation"
+# Fill after `wrangler d1 create butter-activation`.
+database_id = "REPLACE_WITH_D1_ID"

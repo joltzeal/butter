@@ -38,6 +38,9 @@ from .models import AccountIn, AccountOut, AccountUpdate, BillingFormIn, BulkIn,
 
 LOGGER = logging.getLogger("butter.api")
 
+# An unlicensed copy may hold this many accounts; a licence removes the cap.
+FREE_ACCOUNTS = 2
+
 # The Tauri webview uses a privileged scheme; Vite dev serves from localhost.
 # Both are loopback-owned, so a bounded regex is safer than "*" with credentials.
 CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
@@ -205,6 +208,15 @@ def create_app() -> FastAPI:
             return {"ok": True, "message": "已取消"}
         return {"ok": False, "message": "没有等待中的登录"}
 
+    @app.get("/api/license")
+    async def license_state() -> dict[str, Any]:
+        return {
+            "licensed": os.environ.get("BUTTER_LICENSED") == "1",
+            "plan": os.environ.get("BUTTER_PLAN", ""),
+            "exp": int(os.environ.get("BUTTER_EXP") or 0),
+            "free_limit": FREE_ACCOUNTS,
+        }
+
     @app.get("/api/version")
     async def version() -> dict[str, str]:
         from .. import __version__ as ver
@@ -231,6 +243,8 @@ def create_app() -> FastAPI:
         # for the same person would split their session and billing state.
         if any(a.email.lower() == email.lower() for a in st.store.accounts):
             raise HTTPException(409, f"{email} 已在列表中")
+        if os.environ.get("BUTTER_LICENSED") != "1" and len(st.store.accounts) >= FREE_ACCOUNTS:
+            raise HTTPException(402, f"未激活最多 {FREE_ACCOUNTS} 个账号，激活后不限")
         account = Account(email=email, password=payload.password, note=payload.note)
         # Write first, then let the login run: the row must exist even if the
         # login never completes (2FA abandoned, wrong password).

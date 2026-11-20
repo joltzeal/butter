@@ -40,7 +40,12 @@ export function useAccountActions() {
     onError: (err: Error) =>
       push({
         kind: "error",
-        title: err instanceof BackendError && err.status === 409 ? "账号已存在" : "添加失败",
+        title:
+          err instanceof BackendError && err.status === 409
+            ? "账号已存在"
+            : err instanceof BackendError && err.status === 402
+              ? "已达未激活上限"
+              : "添加失败",
         detail: err.message,
       }),
   });

@@ -1,0 +1,7 @@
+{
+  "name": "butter-activation",
+  "private": true,
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}
