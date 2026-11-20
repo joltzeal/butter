@@ -37,12 +37,20 @@ class ProtocolLoginError(RuntimeError):
 
 def _run_sync(email: str, password: str, proxy: str | None,
               code_url: str | None, code: str | None,
-              progress, defer_store: bool = False) -> dict[str, Any]:
+              progress, defer_store: bool = False,
+              resume=None) -> dict[str, Any]:
     """Blocking login. Returns a dict the async caller turns into a LoginOutcome."""
 
     def step(name: str) -> None:
         if progress:
             progress(name)
+
+    # Resuming after a code: the parked client still owns the 2FA challenge, so
+    # replaying steps 0-3 would issue a *new* OTP push and invalidate the code
+    # the operator was given.
+    if resume is not None:
+        client = resume
+        return _finish(client, code, progress, step, defer_store)
 
     client = SyncIdmsaClient(proxy=proxy, verbose=False)
 
@@ -111,6 +119,11 @@ def _run_sync(email: str, password: str, proxy: str | None,
             "message": "需要两步验证码",
         }
 
+    return _finish(client, code, progress, step, defer_store)
+
+
+def _finish(client, code: str, progress, step, defer_store: bool) -> dict[str, Any]:
+    """Verify the code on the parked client, then finish the chain."""
     try:
         verify = client.verify_security_code(code)
     except Exception as exc:  # noqa: BLE001
@@ -159,8 +172,9 @@ async def protocol_login(
     code: str | None = None,
     progress=None,
     defer_store: bool = False,
+    resume=None,
 ) -> dict[str, Any]:
     """Async wrapper around the verified synchronous chain."""
     return await asyncio.to_thread(
-        _run_sync, email, password, proxy, code_url, code, progress, defer_store
+        _run_sync, email, password, proxy, code_url, code, progress, defer_store, resume
     )

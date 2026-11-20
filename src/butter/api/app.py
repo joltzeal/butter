@@ -267,18 +267,26 @@ def create_app() -> FastAPI:
         if st.services._is_busy(payload.email.strip()):
             # A second attempt would overwrite pending_hsa2 and strand the first.
             return {"ok": False, "message": "该账号正在登录中"}
-        result = await st.services.login(
-            LoginRequest(
-                email=payload.email.strip(),
-                password=payload.password,
-                note=payload.note,
-                persist=payload.persist,
-                code=payload.code,
-                code_url=payload.code_url,
-                force_legacy=payload.force_legacy,
+        result: dict[str, Any] | None = None
+        try:
+            result = await st.services.login(
+                LoginRequest(
+                    email=payload.email.strip(),
+                    password=payload.password,
+                    note=payload.note,
+                    persist=payload.persist,
+                    code=payload.code,
+                    code_url=payload.code_url,
+                    force_legacy=payload.force_legacy,
+                )
             )
-        )
-        return result
+            return result
+        finally:
+            # The background handshake owns the flag when one was spawned;
+            # every other exit (error, cancel, 2FA abandoned) must release it or
+            # the account stays "logging in" forever.
+            if not (result and result.get("store_pending")):
+                st.services._mark_busy(payload.email.strip(), False)
 
     @app.post("/api/accounts/{email}/hsa2")
     async def hsa2(email: str, payload: Hsa2In) -> dict[str, bool]:
