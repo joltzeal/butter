@@ -193,3 +193,53 @@ jobs:
             desktop/src-tauri/target/**/release/bundle/macos/*.app.tar.gz
           if-no-files-found: warn
           retention-days: 30
+
+  # `releases/latest/download` answers 404 on a private repository, and the
+  # asset URLs tauri-action writes point at exactly that path. Rewrite them to
+  # the API asset endpoints and publish the manifest on a `latest` branch, which
+  # raw.githubusercontent serves to the app's token.
+  manifest:
+    name: publish updater manifest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch the generated manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: gh release download "$TAG" -p latest.json -O latest.json --clobber
+
+      - name: Rewrite asset URLs to API endpoints
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          python - <<'PY' > rewritten.json
+          import json, os, subprocess
+          tag, repo = os.environ["TAG"], os.environ["REPO"]
+          release = json.loads(subprocess.check_output(["gh", "api", f"repos/{repo}/releases/tags/{tag}"]))
+          by_name = {a["name"]: a["id"] for a in release["assets"]}
+          manifest = json.load(open("latest.json"))
+          for entry in manifest["platforms"].values():
+              name = entry["url"].rsplit("/", 1)[-1]
+              entry["url"] = f"https://api.github.com/repos/{repo}/releases/assets/{by_name[name]}"
+          json.dump(manifest, open("rewritten.json", "w"), indent=2)
+          PY
+          mv rewritten.json latest.json
+
+      - name: Publish to the latest branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.sha }}
+        run: |
+          # First run has no branch yet; create it off the tag, ignore "exists".
+          gh api -X POST "repos/${{ github.repository }}/git/refs" \
+            -f ref=refs/heads/latest -f sha="$SHA" >/dev/null 2>&1 || true
+          # Updating a file needs the blob sha; the first run has none.
+          sha="$(gh api "repos/${{ github.repository }}/contents/latest.json?ref=latest" -q .sha 2>/dev/null || true)"
+          content="$(base64 -w0 latest.json)"
+          gh api -X PUT "repos/${{ github.repository }}/contents/latest.json" \
+            -f message="manifest for ${{ github.ref_name }}" \
+            -f branch=latest -f content="$content" ${sha:+-f sha="$sha"} >/dev/null
