@@ -82,27 +82,9 @@ jobs:
           pip install -e . "pyinstaller>=6.10"
 
       - name: Build backend sidecar
-        run: |
-          python -m PyInstaller --noconfirm --clean --onefile --noconsole --name butter-backend `
-            --paths src --collect-all curl_cffi --collect-submodules uvicorn `
-            --hidden-import uvicorn.logging `
-            --hidden-import uvicorn.loops.auto `
-            --hidden-import uvicorn.protocols.http.auto `
-            --hidden-import uvicorn.protocols.websockets.auto `
-            --hidden-import uvicorn.lifespan.on `
-            --distpath backend-dist --workpath build --specpath build `
-            src/butter/__main__.py
+        run: ./scripts/build_sidecar.ps1
         shell: pwsh
 
-      - name: Point resources at the .exe
-        shell: pwsh
-        run: |
-          $p = "desktop/src-tauri/tauri.conf.json"
-          $c = Get-Content $p -Raw | ConvertFrom-Json
-          $c.bundle.resources = [pscustomobject]@{
-            "../../backend-dist/butter-backend.exe" = "backend/butter-backend.exe"
-          }
-          $c | ConvertTo-Json -Depth 20 | Set-Content $p -Encoding utf8
 
       - name: Install frontend deps
         working-directory: desktop
@@ -171,16 +153,7 @@ jobs:
           python -m pip install -e . "pyinstaller>=6.10"
 
       - name: Build backend sidecar
-        run: |
-          python -m PyInstaller --noconfirm --clean --onefile --name butter-backend \
-            --paths src --collect-all curl_cffi --collect-submodules uvicorn \
-            --hidden-import uvicorn.logging \
-            --hidden-import uvicorn.loops.auto \
-            --hidden-import uvicorn.protocols.http.auto \
-            --hidden-import uvicorn.protocols.websockets.auto \
-            --hidden-import uvicorn.lifespan.on \
-            --distpath backend-dist --workpath build --specpath build \
-            src/butter/__main__.py
+        run: ./scripts/build_sidecar.sh
 
       - name: Install frontend deps
         working-directory: desktop

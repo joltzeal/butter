@@ -130,16 +130,13 @@ export function WorkspaceView() {
   // a button and no request is made until it is pressed.
   // No cache painting: selecting an account always shows the veil until a real
   // read lands, so what is on screen is exactly what the server answered.
-  // Selecting an account loads it: the pane has no cache to paint, so the whole
-  // point of the click is the data. Offline accounts are logged in first by the
-  // backend; a 2FA stop raises the dialog like any other login.
+  // Selecting an account only prepares the pane. The read is explicit: the
+  // button starts it, and an offline session is logged in as part of that same
+  // press rather than on every row click.
   useEffect(() => {
     setInfo(null);
     setForm({ ...EMPTY });
     setNotice("");
-    if (!selected) return;
-    void load(selected);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
   useEffect(() => {

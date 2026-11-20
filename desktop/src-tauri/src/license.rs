@@ -20,7 +20,9 @@ use tauri::{AppHandle, Manager};
 const PUBLIC_KEY_HEX: &str = "7fb80f6aebd9e7f32e56dda314ac11688e2a14407a9298480b1383e6b7a28c86";
 
 /// A licence is only trusted for a short while without the server.
-const OFFLINE_GRACE_SECS: i64 = 7 * 24 * 3600;
+/// Must stay shorter than the shortest code (a week), or one purchase buys
+/// a free week offline.
+const OFFLINE_GRACE_SECS: i64 = 3 * 24 * 3600;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Payload {
@@ -169,6 +171,76 @@ pub fn save(app: &AppHandle, payload: &str, sig: &str, checked: i64) -> Result<(
     let path = licence_path(app)?;
     std::fs::write(path, serde_json::to_string(&licence).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())
+}
+
+fn activation_url() -> String {
+    if let Ok(v) = std::env::var("BUTTER_ACTIVATION_URL") {
+        if !v.is_empty() {
+            return v;
+        }
+    }
+    option_env!("BUTTER_ACTIVATION_URL").unwrap_or("").to_string()
+}
+
+/// Refresh the licence from the server. Best effort: success rewrites `checked`
+/// and pushes expiry forward, failure just leaves the offline grace running.
+pub async fn renew(app: AppHandle) -> Result<Status, String> {
+    let base = activation_url();
+    if base.is_empty() {
+        return Err("未配置激活服务器".into());
+    }
+    let machine = machine_id(&app)?;
+    let body = serde_json::json!({ "machine": machine });
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client
+        .post(format!("{}/renew", base.trim_end_matches('/')))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        let detail = res.text().await.unwrap_or_default();
+        return Err(detail);
+    }
+
+    #[derive(Deserialize)]
+    struct Reply {
+        payload: String,
+        sig: String,
+        #[serde(default)]
+        checked: i64,
+    }
+    let reply: Reply = res.json().await.map_err(|e| e.to_string())?;
+    let checked = if reply.checked > 0 { reply.checked } else { now() };
+    save(&app, &reply.payload, &reply.sig, checked)?;
+    Ok(evaluate(&app))
+}
+
+/// Renew on a slow loop; the caller only starts it when already licensed.
+pub fn spawn_renewer(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let status = evaluate(&app);
+            if !status.licensed {
+                break;
+            }
+            // Once a day is plenty against a 3-day leash.
+            if let Ok(raw) = std::fs::read_to_string(licence_path(&app).unwrap_or_default()) {
+                if let Ok(licence) = serde_json::from_str::<Licence>(&raw) {
+                    if now() - licence.checked < 86_400 {
+                        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                        continue;
+                    }
+                }
+            }
+            let _ = renew(app.clone()).await;
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+        }
+    });
 }
 
 pub fn mark_checked(app: &AppHandle) {

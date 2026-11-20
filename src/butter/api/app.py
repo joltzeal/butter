@@ -37,6 +37,7 @@ from ..core.store import Account, AccountStore, Settings, data_dir
 from .models import AccountIn, AccountOut, AccountUpdate, BillingFormIn, BulkIn, BulkOut, CheckIn, ClashRotateIn, ClashSelectIn, Hsa2In, LoginIn, ParseOut, PasteIn, ReorderIn, SettingsIn
 
 LOGGER = logging.getLogger("butter.api")
+from .. import __version__ as _VERSION  # noqa: E402
 
 # An unlicensed copy may hold this many accounts; a licence removes the cap.
 FREE_ACCOUNTS = 2
@@ -179,7 +180,7 @@ def create_app() -> FastAPI:
         st = get_state()
         return {
             "ok": True,
-            "version": "0.1.0",
+            "version": _VERSION,
             "curl_cffi": HAS_CURL_CFFI,
             "data_dir": str(data_dir()),
             "clients": st.hub.count,

@@ -37,16 +37,7 @@ python -m pip install --quiet --upgrade pip
 python -m pip install --quiet -r (Join-Path $Root 'requirements.txt')
 & (Join-Path $PSScriptRoot 'build_sidecar.ps1')
 
-# --- 3. point resources at the .exe -------------------------------------
-# macOS declares the extensionless sidecar; Windows needs the .exe mapping, so
-# patch the config for this run instead of shipping a dead entry to both.
-Write-Host '==> Patching tauri.conf.json for Windows' -ForegroundColor Cyan
-$ConfPath = Join-Path $Root 'desktop\src-tauri\tauri.conf.json'
-$Conf = Get-Content $ConfPath -Raw | ConvertFrom-Json
-$Conf.bundle.resources = [pscustomobject]@{
-    '../../backend-dist/butter-backend.exe' = 'backend/butter-backend.exe'
-}
-$Conf | ConvertTo-Json -Depth 20 | Set-Content $ConfPath -Encoding utf8
+# --- 3. (resources already point at the sidecar directory) ---
 
 # --- 4. frontend + tauri -------------------------------------------------
 Write-Host '==> Building frontend and installer' -ForegroundColor Cyan

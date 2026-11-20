@@ -297,6 +297,11 @@ fn license_machine(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn license_renew(app: tauri::AppHandle) -> Result<license::Status, String> {
+    license::renew(app).await
+}
+
+#[tauri::command]
 async fn license_apply(
     app: tauri::AppHandle,
     payload: String,
@@ -329,13 +334,17 @@ pub fn run() {
             open_external,
             license_status,
             license_machine,
-            license_apply
+            license_apply,
+            license_renew
         ])
         .setup(|app| {
             let handle = app.handle().clone();
             // The backend runs either way: an unlicensed copy is limited to two
             // accounts rather than dead, so the app is usable before buying.
             let status = license::evaluate(&handle);
+            if status.licensed {
+                license::spawn_renewer(handle.clone());
+            }
             let boot_handle = handle.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(err) = spawn_backend(boot_handle).await {
