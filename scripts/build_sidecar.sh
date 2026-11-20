@@ -13,14 +13,24 @@ NAME="butter-backend"
 ENGINE="${SIDECAR_ENGINE:-nuitka}"
 cd "$ROOT"
 
-# uv is preferred (fast, pinned); runners without it fall back to python.
-if command -v uv >/dev/null 2>&1; then
-  PIP() { uv pip install --quiet "$@"; }
-  PY() { uv run python "$@"; }
+# Pick the interpreter that actually has the project's dependencies, and never
+# depend on uv having a virtualenv (CI has none).
+if [ -n "${VIRTUAL_ENV:-}" ]; then
+  PY_BIN="python"
+elif [ -x "$ROOT/.venv/bin/python" ]; then
+  PY_BIN="$ROOT/.venv/bin/python"
 else
-  PIP() { python -m pip install --quiet "$@"; }
-  PY() { python "$@"; }
+  PY_BIN="python"
 fi
+
+PIP() {
+  if command -v uv >/dev/null 2>&1; then
+    uv pip install --quiet --python "$PY_BIN" "$@"
+  else
+    "$PY_BIN" -m pip install --quiet "$@"
+  fi
+}
+PY() { "$PY_BIN" "$@"; }
 
 rm -rf "$OUT/$NAME.dist"
 mkdir -p "$OUT"
