@@ -15,7 +15,11 @@
 
 缺签名证书时 CI 仍然能出包，但装机会弹「未知开发者 / 已阻止」。
 
-想让 `latest.json` 可以被匿名拉取，还有一个更省事的办法：把仓库转公开，然后删掉 `UPDATE_TOKEN` 和 `client.ts` 里对应的 header。
+**仓库现在是私有**，所以更新走的不是 `releases/latest/download`（私有仓库下带 token 也 404），而是 `latest` 分支上的 manifest + API 资产地址：
+
+- endpoint 写死在 `tauri.conf.json`：`raw.githubusercontent.com/joltzeal/butter/refs/heads/latest/latest.json`（必须带 `refs/heads/`，裸分支名返回空 200）
+- CI 的 `manifest` job 会把资产地址改写成 `api.github.com/repos/.../releases/assets/<id>` 再推分支
+- 私有仓库的 Actions 分钟要计费，额度用尽后 job 会在 2 秒内失败、`runner_name` 为空。额度紧张时先把仓库临时转公开跑构建，跑完再转回私有（公开仓库 Actions 免费）。
 
 ## 1. 签名密钥保管
 
