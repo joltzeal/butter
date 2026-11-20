@@ -13,12 +13,21 @@ NAME="butter-backend"
 ENGINE="${SIDECAR_ENGINE:-nuitka}"
 cd "$ROOT"
 
+# uv is preferred (fast, pinned); runners without it fall back to python.
+if command -v uv >/dev/null 2>&1; then
+  PIP() { uv pip install --quiet "$@"; }
+  PY() { uv run python "$@"; }
+else
+  PIP() { python -m pip install --quiet "$@"; }
+  PY() { python "$@"; }
+fi
+
 rm -rf "$OUT/$NAME.dist"
 mkdir -p "$OUT"
 
 if [ "$ENGINE" = "pyinstaller" ]; then
-  uv pip install --quiet "pyinstaller>=6.10"
-  uv run pyinstaller \
+  PIP "pyinstaller>=6.10"
+  PY -m pyinstaller \
     --noconfirm --clean --onefile --name "$NAME" --paths src \
     --collect-all curl_cffi --collect-submodules uvicorn \
     --hidden-import uvicorn.logging \
@@ -32,10 +41,10 @@ if [ "$ENGINE" = "pyinstaller" ]; then
   exit 0
 fi
 
-uv pip install --quiet "nuitka>=2.4" ordered-set zstandard
+PIP "nuitka>=2.4" ordered-set zstandard
 # curl_cffi ships libcurl-impersonate; it must travel as package data or the
 # binary starts and then fails on first request.
-uv run python -m nuitka \
+PY -m nuitka \
   --standalone --assume-yes-for-downloads \
   --output-dir="$OUT" --output-filename="$NAME" \
   --include-package=butter --include-package=uvicorn \

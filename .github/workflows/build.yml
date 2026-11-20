@@ -66,6 +66,8 @@ jobs:
           cache: pnpm
           cache-dependency-path: desktop/pnpm-lock.yaml
 
+      - uses: astral-sh/setup-uv@v5
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: swatinem/rust-cache@v2
@@ -153,6 +155,8 @@ jobs:
           node-version: "20"
           cache: pnpm
           cache-dependency-path: desktop/pnpm-lock.yaml
+
+      - uses: astral-sh/setup-uv@v5
 
       - uses: dtolnay/rust-toolchain@stable
 
