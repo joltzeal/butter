@@ -1,0 +1,23 @@
+{
+  "version": "0.1.99",
+  "notes": "\u66f4\u65b0\u901a\u9053\u5192\u70df\u6d4b\u8bd5\uff1a\u5b9e\u9645\u88c5\u7684\u662f 0.1.22 \u7684\u5305",
+  "pub_date": "2026-11-20T20:36:07.276Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUWDYwbTdhNHp6ZEp3YmluRmtEYmkzZXdKWUN5VFh1T1NRZW9mOEdibk4yVHIvYmJ1MkJla2djUGg1UlZucitTTVZ1RkQ3ckQwU2J5TjhrUlRtYTN0czN5S3RNam9CRUFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MjA1Mzk0CWZpbGU6QnV0dGVyLmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuMjIKdzA2WDE0dEZHUjZnZlRYclhOUnZwUjlFNVRoV1NYSzdhWEo1bjRhcm1RL0E0Wlp5QllZMWpPbUF5TEpUK2h4b3h3cFVZUEVneDRWZk8xWFJoTDlWQnc9PQo=",
+      "url": "https://api.github.com/repos/joltzeal/butter/releases/assets/773180876"
+    },
+    "darwin-aarch64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUWDYwbTdhNHp6ZEp3YmluRmtEYmkzZXdKWUN5VFh1T1NRZW9mOEdibk4yVHIvYmJ1MkJla2djUGg1UlZucitTTVZ1RkQ3ckQwU2J5TjhrUlRtYTN0czN5S3RNam9CRUFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MjA1Mzk0CWZpbGU6QnV0dGVyLmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuMjIKdzA2WDE0dEZHUjZnZlRYclhOUnZwUjlFNVRoV1NYSzdhWEo1bjRhcm1RL0E0Wlp5QllZMWpPbUF5TEpUK2h4b3h3cFVZUEVneDRWZk8xWFJoTDlWQnc9PQo=",
+      "url": "https://api.github.com/repos/joltzeal/butter/releases/assets/773180876"
+    },
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUWDYwbTdhNHp6ZE1YU1ZhUGRJYUhxcm5NMW5MazJsaDA3N1o3Z2lydEx0dVluWVE2Y1BYN0cxcVZVa3RCU1NreGV0RktZTnJVUjBoaFFRaVZ1NmIxZ2FrU0lqamg0MmdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MjA2OTYzCWZpbGU6QnV0dGVyXzAuMS4yMl94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4xLjIyClZWTERsZGVabnJ6L1ZlNXdrUTZxSGZOSzV5QXJGVjZqdHFKZWUwK0Y3eUM5aDNMcVN3SEJMZEJLeEN5YWdYZ3NBWGpJTk9oT1dydzhCMUhrekxrUkJBPT0K",
+      "url": "https://api.github.com/repos/joltzeal/butter/releases/assets/773260509"
+    },
+    "windows-x86_64-nsis": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUWDYwbTdhNHp6ZE1YU1ZhUGRJYUhxcm5NMW5MazJsaDA3N1o3Z2lydEx0dVluWVE2Y1BYN0cxcVZVa3RCU1NreGV0RktZTnJVUjBoaFFRaVZ1NmIxZ2FrU0lqamg0MmdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MjA2OTYzCWZpbGU6QnV0dGVyXzAuMS4yMl94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4xLjIyClZWTERsZGVabnJ6L1ZlNXdrUTZxSGZOSzV5QXJGVjZqdHFKZWUwK0Y3eUM5aDNMcVN3SEJMZEJLeEN5YWdYZ3NBWGpJTk9oT1dydzhCMUhrekxrUkJBPT0K",
+      "url": "https://api.github.com/repos/joltzeal/butter/releases/assets/773260509"
+    }
+  }
+}
