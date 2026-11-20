@@ -84,7 +84,9 @@ jobs:
             args: --bundles nsis
           - label: macos
             os: macos-latest
-            args: --target universal-apple-darwin --bundles app,dmg
+            # arm64 only: the sidecar is compiled by the runner's own clang, so a
+            # universal app would carry an arm64-only backend and break on Intel.
+            args: --target aarch64-apple-darwin --bundles app,dmg
     steps:
       - uses: actions/checkout@v4
 
@@ -107,7 +109,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.label == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.label == 'macos' && 'aarch64-apple-darwin' || '' }}
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -145,7 +147,7 @@ jobs:
           python -m pip install -e . "pyinstaller>=6.10"
 
       - name: Build backend sidecar
-        shell: bash
+        shell: ${{ matrix.label == 'windows' && 'pwsh' || 'bash' }}
         run: ./scripts/build_sidecar.${{ matrix.label == 'windows' && 'ps1' || 'sh' }}
 
       - name: Install frontend deps

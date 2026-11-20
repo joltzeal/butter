@@ -24,11 +24,17 @@ else
 fi
 
 PIP() {
+  # uv only resolves a virtualenv for a bare "python" name; CI has none, and
+  # `uv pip install --python python` dies with "No virtual environment found".
+  # Try uv with the env we know about, then fall back to plain pip.
   if command -v uv >/dev/null 2>&1; then
-    uv pip install --quiet --python "$PY_BIN" "$@"
-  else
-    "$PY_BIN" -m pip install --quiet "$@"
+    if [ -n "${VIRTUAL_ENV:-}" ] || [ -x "$ROOT/.venv/bin/python" ]; then
+      uv pip install --quiet --python "$PY_BIN" "$@" && return
+    else
+      uv pip install --quiet --system "$@" && return
+    fi
   fi
+  "$PY_BIN" -m pip install --quiet "$@"
 }
 PY() { "$PY_BIN" "$@"; }
 
