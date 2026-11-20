@@ -21,6 +21,8 @@ use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{Manager, RunEvent, State};
+
+mod license;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 
@@ -280,6 +282,34 @@ fn open_external(url: String) -> Result<(), String> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[tauri::command]
+fn license_status(app: tauri::AppHandle) -> license::Status {
+    license::evaluate(&app)
+}
+
+#[tauri::command]
+fn license_machine(app: tauri::AppHandle) -> Result<String, String> {
+    license::machine_id(&app)
+}
+
+#[tauri::command]
+async fn license_apply(
+    app: tauri::AppHandle,
+    payload: String,
+    sig: String,
+    checked: i64,
+) -> Result<license::Status, String> {
+    license::save(&app, &payload, &sig, checked)?;
+    let status = license::evaluate(&app);
+    if status.licensed {
+        let handle = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = spawn_backend(handle).await;
+        });
+    }
+    Ok(status)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -288,10 +318,24 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             backend_info,
             backend_restart,
-            open_external
+            open_external,
+            license_status,
+            license_machine,
+            license_apply
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+            let status = license::evaluate(&handle);
+            if !status.licensed {
+                // No backend without a licence: the activation screen is enough.
+                if let Some(state) = handle.try_state::<BackendState>() {
+                    if let Ok(mut inner) = state.inner.lock() {
+                        push_log(&mut inner, format!("[shell] 未授权: {}", status.reason));
+                        inner.info.status = "unlicensed".into();
+                    }
+                }
+                return Ok(());
+            }
             let boot_handle = handle.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(err) = spawn_backend(boot_handle).await {

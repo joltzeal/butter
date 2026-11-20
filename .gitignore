@@ -60,3 +60,4 @@ data/
 *.msi
 *.exe
 !butter-backend.exe.placeholder
+scripts/license_key.pem

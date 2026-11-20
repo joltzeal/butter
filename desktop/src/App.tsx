@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { CommandPalette } from "./components/CommandPalette";
@@ -10,6 +11,7 @@ import { ToastProvider, useToasts } from "./hooks/useToasts";
 import { useAccounts } from "./hooks/useAccounts";
 import type { ViewId } from "./lib/types";
 import { WorkspaceView } from "./views/WorkspaceView";
+import { ActivationView } from "./views/ActivationView";
 import { LogsView } from "./views/LogsView";
 import { NetworkView } from "./views/NetworkView";
 import { SettingsView } from "./views/SettingsView";
@@ -88,6 +90,19 @@ function BootScreen() {
 
 function Workspace() {
   const [view, setView] = useState<ViewId>("accounts");
+  const { reconnect } = useRealtime();
+  // null while unknown, so the workspace does not flash before the gate answer.
+  const [licensed, setLicensed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) {
+      setLicensed(true); // browser dev without the shell
+      return;
+    }
+    invoke<{ licensed: boolean }>("license_status")
+      .then((status: { licensed: boolean }) => setLicensed(status.licensed))
+      .catch(() => setLicensed(false));
+  }, []);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { data } = useAccounts();
 
@@ -110,6 +125,19 @@ function Workspace() {
     }),
     [data],
   );
+
+  if (licensed === false) {
+    return (
+      <ActivationView
+        onDone={() => {
+          setLicensed(true);
+          reconnect();
+        }}
+      />
+    );
+  }
+
+  if (licensed === null) return <div className="shell" />;
 
   return (
     <div className="shell">
