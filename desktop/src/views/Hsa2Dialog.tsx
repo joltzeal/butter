@@ -1,6 +1,7 @@
-import { KeyRound, X } from "lucide-react";
+import { KeyRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/ui";
+import { Dialog } from "../components/Dialog";
 
 const CODE_LENGTH = 6;
 
@@ -8,8 +9,7 @@ const CODE_LENGTH = 6;
  * Two-factor code entry.
  *
  * Shown when the login stops at HSA2 and no usable ``code_url`` was available:
- * the operator reads the code off their device and types it. A plain field, not
- * an on-screen keypad — the code is six digits and the keyboard is right there.
+ * the operator reads the code off their device and types it.
  */
 export function Hsa2Dialog({
   open,
@@ -22,12 +22,14 @@ export function Hsa2Dialog({
   email: string;
   /** Why the automatic fetch did not happen, shown as context. */
   reason?: string;
-  onSubmit: (code: string) => Promise<void> | void;
+  /** Resolve `true` when the backend accepted the code. */
+  onSubmit: (code: string) => Promise<boolean>;
   onCancel: () => void;
 }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [touched, setTouched] = useState(false);
+  const [error, setError] = useState("");
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -35,11 +37,8 @@ export function Hsa2Dialog({
     setCode("");
     setBusy(false);
     setTouched(false);
-    // The dialog is the only thing on screen; focus belongs in the field.
-    window.setTimeout(() => input.current?.focus(), 30);
+    setError("");
   }, [open]);
-
-  if (!open) return null;
 
   const valid = new RegExp(`^\\d{${CODE_LENGTH}}$`).test(code);
 
@@ -47,87 +46,74 @@ export function Hsa2Dialog({
     setTouched(true);
     if (!valid || busy) return;
     setBusy(true);
+    setError("");
     try {
-      await onSubmit(code);
+      if ((await onSubmit(code)) === false) setError("验证码未被接受，请确认后重试");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "提交失败");
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="modal-backdrop" onMouseDown={onCancel}>
-      <div className="modal modal--sm" onMouseDown={(event) => event.stopPropagation()}>
-        <header className="modal__head">
-          <KeyRound style={{ width: 16, color: "var(--amber)" }} />
-          <div>
-            <h2>需要两步验证</h2>
-            <p style={{ wordBreak: "break-all" }}>{email || "输入设备上收到的 6 位验证码"}</p>
-          </div>
-          <button className="modal__close" onClick={onCancel}>
-            <X />
-          </button>
-        </header>
-
-        <div className="modal__body">
-          {reason ? (
-            <div
-              className="tiny"
-              style={{
-                marginBottom: 12,
-                padding: "7px 10px",
-                borderRadius: 8,
-                lineHeight: 1.6,
-                background: "color-mix(in srgb, var(--warn) 10%, transparent)",
-                border: "1px solid color-mix(in srgb, var(--warn) 32%, transparent)",
-              }}
-            >
-              {reason}
-            </div>
-          ) : null}
-
-          <input
-            ref={input}
-            value={code}
-            onChange={(event) => {
-              // Digits only, length-capped: paste of "123 456" still works.
-              setCode(event.target.value.replace(/\D/g, "").slice(0, CODE_LENGTH));
-              setTouched(true);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void submit();
-            }}
-            onBlur={() => setTouched(true)}
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            placeholder="000000"
-            aria-label="六位验证码"
-            data-invalid={touched && code.length > 0 && !valid ? "true" : undefined}
-            style={{
-              width: "100%",
-              height: 42,
-              textAlign: "center",
-              letterSpacing: "0.42em",
-              fontSize: 19,
-              fontVariantNumeric: "tabular-nums",
-              fontFamily: "var(--font-mono)",
-            }}
-          />
-          <div className="dim tiny" style={{ marginTop: 8, lineHeight: 1.6 }}>
-            {touched && code.length > 0 && !valid
-              ? `还差 ${CODE_LENGTH - code.length} 位，需 ${CODE_LENGTH} 位数字`
-              : "6 位数字 · 5 分钟内有效，连续错误 3 次需重新登录"}
-          </div>
-        </div>
-
-        <footer className="modal__foot">
-          <Button variant="ghost" onClick={onCancel}>
+    <Dialog
+      open={open}
+      onClose={onCancel}
+      title="需要两步验证"
+      subtitle={email || "输入设备上收到的 6 位验证码"}
+      icon={KeyRound}
+      busy={busy}
+      onSubmit={submit}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>
             取消
           </Button>
-          <Button variant="primary" onClick={submit} disabled={busy || !valid}>
+          <Button variant="primary" type="submit" disabled={!valid} loading={busy}>
             {busy ? "验证中…" : "提交"}
           </Button>
-        </footer>
+        </>
+      }
+    >
+      {reason ? (
+        <div className="note note--warn tiny">{reason}</div>
+      ) : null}
+
+      <input
+        ref={input}
+        name="one-time-code"
+        autoFocus
+        value={code}
+        onChange={(event) => {
+          // Digits only, length-capped: paste of "123 456" still works.
+          setCode(event.target.value.replace(/\D/g, "").slice(0, CODE_LENGTH));
+          setTouched(true);
+          setError("");
+        }}
+        onBlur={() => setTouched(true)}
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        placeholder="000000"
+        aria-label="六位验证码"
+        data-invalid={touched && code.length > 0 && !valid ? "true" : undefined}
+        style={{
+          width: "100%",
+          height: 42,
+          textAlign: "center",
+          letterSpacing: "0.42em",
+          fontSize: 19,
+          fontVariantNumeric: "tabular-nums",
+          fontFamily: "var(--font-mono)",
+        }}
+      />
+      <div className={error ? "field__hint field__hint--error" : "dim tiny"} style={{ lineHeight: 1.6 }}>
+        {error
+          ? error
+          : touched && code.length > 0 && !valid
+            ? `还差 ${CODE_LENGTH - code.length} 位，需 ${CODE_LENGTH} 位数字`
+            : "6 位数字 · 5 分钟内有效，连续错误 3 次需重新登录"}
       </div>
-    </div>
+    </Dialog>
   );
 }

@@ -79,11 +79,14 @@ fn push_log(inner: &mut BackendInner, line: String) {
     inner.info.log_tail = inner.logs.iter().rev().take(80).cloned().rev().collect();
 }
 
+/// Program, arguments, and the directory to start it in.
+type Launch = (PathBuf, Vec<String>, Option<PathBuf>);
+
 /// Resolve how to start the backend.
-fn resolve_command(app: &tauri::AppHandle) -> Result<(PathBuf, Vec<String>), String> {
+fn resolve_command(app: &tauri::AppHandle) -> Result<Launch, String> {
     if let Ok(explicit) = std::env::var("BUTTER_BACKEND") {
         if !explicit.is_empty() {
-            return Ok((PathBuf::from(explicit), vec![]));
+            return Ok((PathBuf::from(explicit), vec![], None));
         }
     }
 
@@ -107,7 +110,7 @@ fn resolve_command(app: &tauri::AppHandle) -> Result<(PathBuf, Vec<String>), Str
             for name in ["butter-backend", "butter-backend.exe"] {
                 let candidate = dir.join(name);
                 if candidate.exists() {
-                    return Ok((candidate, vec![]));
+                    return Ok((candidate, vec![], None));
                 }
             }
         }
@@ -122,7 +125,11 @@ fn resolve_command(app: &tauri::AppHandle) -> Result<(PathBuf, Vec<String>), Str
 }
 
 /// Locate the repo root above the CWD and run the package from ``src``.
-fn resolve_from_source() -> Option<(PathBuf, Vec<String>)> {
+///
+/// The returned working directory matters: ``tauri dev`` is usually started from
+/// ``desktop/``, so a bare ``sys.path.insert(0, "src")`` resolved to
+/// ``desktop/src`` and the sidecar died on ``No module named 'butter'``.
+fn resolve_from_source() -> Option<Launch> {
     // Developer fallback: walk up from the executable and from the CWD looking for
     // the repository root that holds the Python package.
     let mut roots: Vec<PathBuf> = Vec::new();
@@ -137,17 +144,24 @@ fn resolve_from_source() -> Option<(PathBuf, Vec<String>)> {
             // Prefer the repo venv with src on PYTHONPATH. `uv run` executes the
             // *installed* copy, so backend edits stayed invisible until a rebuild.
             let venv_py = dir.join(".venv").join("bin").join("python");
+            let src = dir.join("src");
             if venv_py.exists() {
                 return Some((
                     venv_py,
                     vec![
                         "-c".into(),
-                        "import sys;sys.path.insert(0,'src');from butter.server import main;main()".into(),
+                        // Absolute on purpose: the path must not depend on CWD.
+                        format!("import sys;sys.path.insert(0,{src:?});from butter.server import main;main()"),
                     ],
+                    Some(dir.clone()),
                 ));
             }
             let uv = which::which("uv").ok()?;
-            return Some((uv, vec!["run".into(), "--project".into(), dir.display().to_string(), "butter".into()]));
+            return Some((
+                uv,
+                vec!["run".into(), "--project".into(), dir.display().to_string(), "butter".into()],
+                Some(dir.clone()),
+            ));
         }
     }
     None
@@ -172,10 +186,13 @@ async fn wait_for_health(port: u16) -> bool {
 }
 
 async fn spawn_backend(app: tauri::AppHandle) -> Result<BackendInfo, String> {
-    let (program, args) = resolve_command(&app)?;
+    let (program, args, workdir) = resolve_command(&app)?;
     let port = portpicker::pick_unused_port().ok_or_else(|| "没有可用的本地端口".to_string())?;
 
     let mut cmd = Command::new(&program);
+    if let Some(dir) = workdir {
+        cmd.current_dir(dir);
+    }
     // Windows: the sidecar is a console binary, so spawning it opens a cmd
     // window behind the app. CREATE_NO_WINDOW keeps only the webview visible.
     #[cfg(target_os = "windows")]
@@ -207,6 +224,9 @@ async fn spawn_backend(app: tauri::AppHandle) -> Result<BackendInfo, String> {
         }
     }
 
+    // Belt and braces with ``kill_on_drop``: the sidecar watches this pid and
+    // exits on its own when the shell disappears (dev restarts, crashes).
+    cmd.env("BUTTER_PARENT_PID", std::process::id().to_string());
     let mut child = cmd.spawn().map_err(|err| format!("启动后端失败: {err}"))?;
     let pid = child.id();
 
@@ -330,6 +350,8 @@ async fn license_apply(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .manage(BackendState::default())
         .invoke_handler(tauri::generate_handler![

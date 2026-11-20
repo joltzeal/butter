@@ -1,7 +1,8 @@
-import { ClipboardPaste, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ClipboardPaste } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useOptionalApi } from "../hooks/useRealtime";
 import { Button, Field } from "../components/ui";
+import { Dialog } from "../components/Dialog";
 
 const FIELD_LABELS: Record<string, string> = {
   first_name: "名字",
@@ -34,102 +35,110 @@ export function PasteDialog({
   const [preview, setPreview] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const timer = useRef<number | null>(null);
+  const inflight = useRef<{ seq: number; controller: AbortController } | null>(null);
+  const seq = useRef(0);
 
   useEffect(() => {
-    if (!open) {
-      setText("");
-      setPreview({});
-      setError(null);
-    }
+    if (open) return;
+    setText("");
+    setPreview({});
+    setError(null);
   }, [open]);
 
-  if (!open) return null;
+  useEffect(
+    () => () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+      inflight.current?.controller.abort();
+    },
+    [],
+  );
 
-  const parse = async () => {
+  const parse = async (value: string) => {
+    if (!api) return;
+    inflight.current?.controller.abort();
+    const controller = new AbortController();
+    const mine = ++seq.current;
+    inflight.current = { seq: mine, controller };
     setBusy(true);
-    setError(null);
     try {
-      if (!api) return;
-      const result = await api.parsePaste(text);
+      const result = await api.parsePaste(value, controller.signal);
+      // A slow response must not overwrite a newer preview.
+      if (mine !== seq.current) return;
       setPreview(result.fields);
       if (result.count === 0) setError("未识别到任何字段，请检查格式");
+      else setError(null);
     } catch (err) {
+      if (mine !== seq.current) return;
+      if (controller.signal.aborted) return;
       setError(err instanceof Error ? err.message : "解析失败");
     } finally {
-      setBusy(false);
+      if (mine === seq.current) setBusy(false);
     }
   };
 
+  // Typing is debounced; "重新解析" forces an immediate pass.
+  const schedule = (value: string) => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      timer.current = null;
+      if (value.trim().length >= 6) void parse(value);
+    }, 300);
+  };
+
+  const apply = () => {
+    onApply(preview);
+    onClose();
+  };
+
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="modal" onMouseDown={(event) => event.stopPropagation()}>
-        <header className="modal__head">
-          <ClipboardPaste style={{ width: 16, color: "var(--amber)" }} />
-          <div>
-            <h2>粘贴识别</h2>
-            <p>支持中文标签、英文标签、键值流、空行嵌套、卡片块与 JSON</p>
-          </div>
-          <button className="modal__close" onClick={onClose}>
-            <X />
-          </button>
-        </header>
-        <div className="modal__body">
-          <textarea
-            autoFocus
-            placeholder={"First Name: Jane\nLast Name: Doe\nAddress: 5 Oak St\nCity: Austin\nState: TX\nZIP: 78701\nCountry: US"}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            onInput={async (event) => {
-              const value = (event.target as HTMLTextAreaElement).value;
-              if (value.trim().length < 6) return;
-              try {
-                if (!api) return;
-                const result = await api.parsePaste(value);
-                setPreview(result.fields);
-                setError(null);
-              } catch {
-                /* keep last good preview */
-              }
-            }}
-          />
-          {preview && Object.keys(preview).length > 0 ? (
-            <div className="paste-preview">
-              {Object.entries(preview).map(([key, value]) => (
-                <span className="chip" key={key}>
-                  {FIELD_LABELS[key] ?? key} <b>{value}</b>
-                </span>
-              ))}
-            </div>
-          ) : null}
-          {error ? <div className="field__hint" style={{ color: "var(--danger)" }}>{error}</div> : null}
-        </div>
-        <footer className="modal__foot">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="粘贴识别"
+      subtitle="支持中文标签、英文标签、键值流、空行嵌套、卡片块与 JSON"
+      icon={ClipboardPaste}
+      size="md"
+      busy={busy}
+      footer={
+        <>
           <Button variant="ghost" onClick={onClose}>
             取消
           </Button>
-          <Button variant="ghost" onClick={parse} disabled={busy || !text.trim()}>
+          <Button variant="ghost" onClick={() => void parse(text)} disabled={busy || !text.trim()}>
             重新解析
           </Button>
-          <Button
-            variant="primary"
-            disabled={Object.keys(preview).length === 0}
-            onClick={() => {
-              onApply(preview);
-              onClose();
-            }}
-          >
+          <Button variant="primary" onClick={apply} disabled={Object.keys(preview).length === 0}>
             填入 {Object.keys(preview).length} 个字段
           </Button>
-        </footer>
-      </div>
-    </div>
-  );
-}
-
-export function FieldRow({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
-  return (
-    <Field label={label} hint={hint}>
-      {children}
-    </Field>
+        </>
+      }
+    >
+      <Field label="粘贴内容" hint={busy ? "识别中…" : undefined}>
+        <textarea
+          name="paste"
+          autoFocus
+          rows={8}
+          spellCheck={false}
+          className="paste-area"
+          placeholder={"First Name: Jane\nLast Name: Doe\nAddress: 5 Oak St\nCity: Austin\nState: TX\nZIP: 78701\nCountry: US"}
+          value={text}
+          onChange={(event) => {
+            setText(event.target.value);
+            schedule(event.target.value);
+          }}
+        />
+      </Field>
+      {Object.keys(preview).length > 0 ? (
+        <div className="paste-preview">
+          {Object.entries(preview).map(([key, value]) => (
+            <span className="chip" key={key}>
+              {FIELD_LABELS[key] ?? key} <b>{value}</b>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {error ? <div className="field__hint field__hint--error">{error}</div> : null}
+    </Dialog>
   );
 }

@@ -13,19 +13,9 @@ export function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString("zh-CN");
 }
 
-export function maskEmail(email: string): string {
-  const [user, domain] = email.split("@");
-  if (!domain || user.length <= 3) return email;
-  return `${user.slice(0, 3)}***@${domain}`;
-}
-
 export function groupInitials(email: string): string {
   const handle = email.split("@")[0] ?? "";
   const parts = handle.split(/[._-]+/).filter(Boolean);
   const letters = (parts.length > 1 ? parts[0][0] + parts[1][0] : handle.slice(0, 2)) || "?";
   return letters.toUpperCase();
-}
-
-export function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }

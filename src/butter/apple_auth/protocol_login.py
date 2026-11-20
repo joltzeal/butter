@@ -53,6 +53,7 @@ def _run_sync(email: str, password: str, proxy: str | None,
         return _finish(client, code, progress, step, defer_store)
 
     client = SyncIdmsaClient(proxy=proxy, verbose=False)
+    LOGGER.info("[chain] 新会话 %s", email)
 
     step("connect")
     try:
@@ -77,7 +78,9 @@ def _run_sync(email: str, password: str, proxy: str | None,
         raise ProtocolLoginError("complete", str(exc)) from exc
     status = getattr(complete, "status_code", 0)
 
-    # 200 means no second factor; 409 means a code is required.
+    # 200 = no second factor. 409 = Apple opened a challenge, prompt for it.
+    # Anything else is a real failure — treating 400 as "needs a code" was what
+    # put an input box on screen with no push behind it.
     if status == 200:
         if not defer_store:
             step("store")
@@ -95,7 +98,7 @@ def _run_sync(email: str, password: str, proxy: str | None,
             "message": "登录成功",
         }
 
-    if status not in (409, 400) and status >= 400:
+    if status != 409:
         raise ProtocolLoginError("complete", f"status={status}")
 
     step("hsa2")
@@ -107,10 +110,12 @@ def _run_sync(email: str, password: str, proxy: str | None,
         # SMS never produces a code here at all.
         try:
             code = fetch_code(code_url)
-        except Exception as exc:  # noqa: BLE001
-            raise ProtocolLoginError("hsa2", f"取验证码失败: {exc}") from exc
+        except Exception as exc:  # noqa: BLE001 - a dead endpoint just means typed input
+            LOGGER.info("[chain] 取码失败，改为手动输入: %s", exc)
+            code = None
     client.prefetch_auth()
     if not code:
+        LOGGER.info("[chain] 停在这里等验证码")
         return {
             "ok": False,
             "hsa2_required": True,
@@ -124,6 +129,7 @@ def _run_sync(email: str, password: str, proxy: str | None,
 
 def _finish(client, code: str, progress, step, defer_store: bool) -> dict[str, Any]:
     """Verify the code on the parked client, then finish the chain."""
+    LOGGER.info("[chain] 续用会话校验验证码")
     try:
         verify = client.verify_security_code(code)
     except Exception as exc:  # noqa: BLE001

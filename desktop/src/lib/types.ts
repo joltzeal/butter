@@ -7,8 +7,6 @@ export interface Toast {
   detail?: string;
   /** No auto-dismiss; the flow dismisses it or the operator closes it. */
   sticky?: boolean;
-  /** Closing also aborts the flow the toast is reporting on. */
-  onCancel?: () => void;
+  /** Explicit action (e.g. 取消检测). Closing the toast does not run it. */
+  action?: { label: string; run: () => void };
 }
-
-export type TradeLine = "HK" | "US";

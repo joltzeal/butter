@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Api, resolveBaseUrl, type EventEnvelope } from "../api/client";
 
 export type ConnectionState = "boot" | "online" | "offline";
@@ -30,21 +38,37 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   // Once a connection has succeeded the app is usable, so the overlay only has
   // to cover the very first attempt.
   const everOnlineRef = useRef(false);
+  const [ready, setReady] = useState(false);
+  // Boot is single-flight: StrictMode's double mount must not run two 45s
+  // resolve loops and two health probes.
+  const bootingRef = useRef<AbortController | null>(null);
+  const retryTimerRef = useRef<number | null>(null);
   const closedRef = useRef(false);
 
   const api = useMemo(() => (base ? new Api(base) : null), [base]);
 
+  const seqRef = useRef(0);
   const push = useCallback((envelope: EventEnvelope) => {
-    setLastEvent(envelope);
+    seqRef.current += 1;
+    const stamped = { ...envelope, id: seqRef.current };
+    setLastEvent(stamped);
     setEvents((prev) => {
-      const next = [...prev, envelope];
+      const next = [...prev, stamped];
       return next.length > MAX_EVENTS ? next.slice(next.length - MAX_EVENTS) : next;
     });
   }, []);
 
+  const clearRetry = () => {
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  };
+
   const connect = useCallback(
     (url: string) => {
       closedRef.current = false;
+      clearRetry();
       socketRef.current?.close();
       const socket = new WebSocket(url);
       socketRef.current = socket;
@@ -52,6 +76,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       socket.onopen = () => {
         retryRef.current = 0;
         everOnlineRef.current = true;
+        setReady(true);
         setState("online");
         setError(null);
       };
@@ -75,7 +100,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         setState("offline");
         const delay = Math.min(8000, 500 * 2 ** retryRef.current);
         retryRef.current += 1;
-        window.setTimeout(() => {
+        clearRetry();
+        retryTimerRef.current = window.setTimeout(() => {
+          retryTimerRef.current = null;
           if (!closedRef.current) connect(url);
         }, delay);
       };
@@ -88,17 +115,26 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   );
 
   const boot = useCallback(async () => {
+    bootingRef.current?.abort();
+    const controller = new AbortController();
+    bootingRef.current = controller;
     setState("boot");
     setError(null);
     try {
-      const resolved = await resolveBaseUrl();
+      const resolved = await resolveBaseUrl(controller.signal);
       const probe = new Api(resolved);
-      await probe.health();
+      await probe.health(controller.signal);
+      if (controller.signal.aborted) return;
       setBase(resolved);
       connect(probe.wsUrl());
     } catch (err) {
+      if (controller.signal.aborted) return;
+      const aborted = err instanceof DOMException && err.name === "AbortError";
+      if (aborted) return;
       setState("offline");
       setError(err instanceof Error ? err.message : "无法连接后端");
+    } finally {
+      if (bootingRef.current === controller) bootingRef.current = null;
     }
   }, [connect]);
 
@@ -106,6 +142,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     void boot();
     return () => {
       closedRef.current = true;
+      bootingRef.current?.abort();
+      clearRetry();
       socketRef.current?.close();
     };
   }, [boot]);
@@ -118,14 +156,15 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       error,
       events,
       lastEvent,
-      ready: everOnlineRef.current,
+      ready,
       reconnect: () => {
         closedRef.current = true;
+        clearRetry();
         socketRef.current?.close();
         void boot();
       },
     }),
-    [state, base, api, error, events, lastEvent, boot],
+    [state, base, api, error, events, lastEvent, ready, boot],
   );
 
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;

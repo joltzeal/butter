@@ -11,15 +11,22 @@ export function useAccounts() {
   const { state } = useRealtime();
   return useQuery({
     queryKey: KEY,
-    queryFn: () => api!.listAccounts(),
+    queryFn: ({ signal }) => api!.listAccounts(signal),
     enabled: state === "online" && Boolean(api),
     refetchOnWindowFocus: false,
     // A background refetch (status poll, invalidation) must not blank the list.
     placeholderData: keepPreviousData,
-    // Fixed cadence: the list is local and cheap, and a conditional interval
-    // deadlocks — the flag that would turn polling on only arrives with a poll.
-    refetchInterval: 2500,
+    // The socket already reports status changes; the timer is only a safety net
+    // for a missed frame, so it can be slow and may idle while unfocused.
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
   });
+}
+
+export interface UpdatePayload {
+  /** The address the account is stored under right now. */
+  key: string;
+  patch: { email?: string; password?: string; note?: string };
 }
 
 export function useAccountActions() {
@@ -27,12 +34,13 @@ export function useAccountActions() {
   // API instance is guaranteed; the assertion keeps hook order stable.
   const api = useOptionalApi() as Api;
   const qc = useQueryClient();
-  const { push, dismiss } = useToasts();
+  const { push } = useToasts();
 
   const invalidate = () => qc.invalidateQueries({ queryKey: KEY });
 
   const create = useMutation({
-    mutationFn: (payload: { email: string; password?: string; note?: string }) => api.createAccount(payload),
+    mutationFn: (payload: { email: string; password?: string; note?: string }) =>
+      api.createAccount(payload),
     onSuccess: (account: Account) => {
       invalidate();
       push({ kind: "ok", title: "账号已添加", detail: account.email });
@@ -51,9 +59,15 @@ export function useAccountActions() {
   });
 
   const update = useMutation({
-    mutationFn: ({ email, ...patch }: { email: string; password?: string; note?: string }) =>
-      api.updateAccount(email, patch),
-    onSuccess: () => invalidate(),
+    // The path key and the payload email are separate: renaming used to send
+    // the *new* address as the path, so the server answered 404 every time.
+    mutationFn: ({ key, patch }: UpdatePayload) => api.updateAccount(key, patch),
+    onSuccess: (account: Account, { key }) => {
+      qc.setQueryData<Account[]>(KEY, (prev) =>
+        prev?.map((a) => (a.email === key ? { ...a, ...account } : a)),
+      );
+      invalidate();
+    },
     onError: (err: Error) => push({ kind: "error", title: "更新失败", detail: err.message }),
   });
 
@@ -64,6 +78,19 @@ export function useAccountActions() {
       push({ kind: "info", title: "账号已删除" });
     },
     onError: (err: Error) => push({ kind: "error", title: "删除失败", detail: err.message }),
+  });
+
+  const logout = useMutation({
+    mutationFn: (email: string) => api.logout(email),
+    onSuccess: (result, email) => {
+      invalidate();
+      push({
+        kind: result.ok ? "info" : "error",
+        title: result.ok ? "已登出" : "登出失败",
+        detail: result.ok ? `${email} 的本地会话已清除` : result.message,
+      });
+    },
+    onError: (err: Error) => push({ kind: "error", title: "登出失败", detail: err.message }),
   });
 
   const login = useMutation({
@@ -104,19 +131,9 @@ export function useAccountActions() {
 
   const checkSessions = useMutation({
     mutationFn: (emails?: string[]) => api.checkSessions(emails),
-    onMutate: (emails) => {
-      // Sticky, cancellable: a check walks the list and can take a while.
-      const id = push({
-        kind: "info",
-        title: "正在检测会话",
-        detail: `${emails?.length ?? 0} 个账号`,
-        sticky: true,
-        onCancel: () => void api.cancelCheck(),
-      });
-      return { toastId: id };
-    },
-    onSuccess: (result, _emails, ctx) => {
-      if (ctx?.toastId) dismiss(ctx.toastId);
+    // No sticky toast: the per-account job cards already say what is running,
+    // and cancelling lives on those cards.
+    onSuccess: (result) => {
       invalidate();
       const offline = result.results.filter((r) => !r.ok).length;
       push({
@@ -125,14 +142,14 @@ export function useAccountActions() {
         detail: `${result.results.length} 个账号，${offline} 个掉线`,
       });
     },
-    onError: (err: Error, _emails, ctx) => {
-      if (ctx?.toastId) dismiss(ctx.toastId);
+    onError: (err: Error) => {
       push({ kind: "error", title: "检测失败", detail: err.message });
     },
   });
 
   const fetchBilling = useMutation({
-    mutationFn: (email: string) => api.getBilling(email),
+    mutationFn: ({ email, signal }: { email: string; signal?: AbortSignal }) =>
+      api.getBilling(email, signal),
     onSuccess: (result) => {
       invalidate();
       if (!result.ok) {
@@ -154,11 +171,15 @@ export function useAccountActions() {
         : "该账号还没有绑定付款方式";
       push({ kind: "ok", title: "账单已读取", detail });
     },
-    onError: (err: Error) => push({ kind: "error", title: "读取账单失败", detail: err.message }),
+    onError: (err: Error) => {
+      if (err.name === "AbortError" || err.name === "TimeoutError") return;
+      push({ kind: "error", title: "读取账单失败", detail: err.message });
+    },
   });
 
   const saveBilling = useMutation({
-    mutationFn: ({ email, form }: { email: string; form: BillingForm }) => api.putBilling(email, form),
+    mutationFn: ({ email, form }: { email: string; form: BillingForm }) =>
+      api.putBilling(email, form),
     onSuccess: (result) => {
       invalidate();
       push({
@@ -174,7 +195,11 @@ export function useAccountActions() {
     mutationFn: (email: string) => api.deleteBilling(email),
     onSuccess: (result) => {
       invalidate();
-      push({ kind: result.ok ? "ok" : "error", title: result.ok ? "账单已移除" : "移除失败", detail: result.message });
+      push({
+        kind: result.ok ? "ok" : "error",
+        title: result.ok ? "账单已移除" : "移除失败",
+        detail: result.message,
+      });
     },
     onError: (err: Error) => push({ kind: "error", title: "移除失败", detail: err.message }),
   });
@@ -188,6 +213,7 @@ export function useAccountActions() {
     create,
     update,
     remove,
+    logout,
     login,
     bulkImport,
     reloginBatch,

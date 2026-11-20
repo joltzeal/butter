@@ -1,4 +1,6 @@
-/* Ordering/layout corrections that must win over the component defaults. */
+/* Cross-layer corrections that must win over component defaults. One rule per
+   problem — the old file defined the input height twice and repeated the
+   setting-row alignment from views.css. */
 
 .setting-row {
   align-items: center;
@@ -45,74 +47,30 @@
   padding-right: 26px;
 }
 
-.setting-row + .setting-row {
-  margin-top: 1px;
-}
-
-/* Panel bodies that host key/value rows need breathing room, not doubled padding. */
-.panel__body > .stack > .setting-row:first-child {
-  padding-top: 0;
-}
-
-/* Table keeps its header visible while the account list scrolls. */
-.accounts__table {
-  display: block;
-  height: 100%;
-}
-
-.table thead {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-}
-
-/* Segmented control sits flush inside rows. */
-.setting-row .seg {
-  flex: none;
-}
-
-/* Billing: the form panel should not stretch to card-visual height. */
-.billing__grid > .panel {
-  align-self: start;
-}
-
-/* Give the light theme its own sheen on the card mock so it stays legible. */
-:root[data-theme="light"] .card-visual[data-empty="true"] {
-  background: var(--bg-inset);
-}
-
-/* Long email in the titlebar/detail never pushes controls around. */
-.detail__email,
-.pick__email {
-  min-width: 0;
-}
-
-/* Rows that follow a panel head must not repeat the head's padding. */
-.panel__body > .setting-row:first-child {
-  padding-top: 0;
-}
-
-/* Settings lists: tighten the panel body, keep the first row flush. */
-/* Settings cards need real breathing room under the panel head;
-   the previous 2px top inset made the first row look glued to the title. */
-.settings-panel > .panel__body {
-  padding: 14px 16px 14px;
-}
-
+/* Panel bodies that host key/value rows need breathing room, not doubled
+   padding, and the first row must sit flush under the panel head. */
+.panel__body > .stack > .setting-row:first-child,
+.panel__body > .setting-row:first-child,
 .settings-panel .setting-row:first-child {
   padding-top: 0;
+}
+
+/* Settings lists: tighten the body, keep the natural height. */
+.settings-panel > .panel__body {
+  padding: 14px 16px;
 }
 
 .setting-row__text strong {
   display: block;
 }
 
-/* Settings cards must keep their natural height.
-   `.page` is a scrolling flex column, so panels are flex items and default to
-   `flex-shrink: 1`. Combined with `.panel { overflow: hidden }` that clipped the
-   bottom rows of the taller cards (代理 / 指纹 / 关于). Pin them to content height
-   and let `.page` do the scrolling — `min-height: auto` keeps the rounded-corner
-   clipping intact. */
+.setting-row + .setting-row {
+  margin-top: 1px;
+}
+
+/* Settings cards must keep their natural height. `.page` is a scrolling flex
+   column, so panels are flex items and default to `flex-shrink: 1`; combined
+   with `overflow: hidden` that clipped the bottom rows. */
 .settings-panel,
 .page > .panel {
   flex: 0 0 auto;
@@ -120,18 +78,12 @@
   min-height: max-content;
 }
 
-/* The fingerprint textarea is tall; give it room instead of squeezing. */
 .settings-panel textarea {
   min-height: 84px;
   resize: vertical;
 }
 
-
-
-/* Form controls must share one height everywhere, not just in settings rows.
-   Native <select> reserves extra vertical space for its arrow and reports
-   `line-height: normal`, so it drifted ~1px taller than <input>. Pin the box
-   model and draw the arrow ourselves. */
+/* Form controls must share one height everywhere, not just in settings rows. */
 input:not([type="checkbox"]):not([type="radio"]),
 select,
 .billing__form select,
@@ -165,10 +117,14 @@ textarea,
   padding-bottom: 8px;
 }
 
+/* Long email in the peek head / node list never pushes controls around. */
+.pick__email {
+  min-width: 0;
+}
+
 /* Windows has no PingFang; Microsoft YaHei renders cramped and its Latin glyphs
-   clash with the UI. Point Windows at PingFang when the user has it (installed
-   via Powerfont / Apple apps), then fall back through the closest CJK faces
-   before any generic sans. */
+   clash with the UI. Point Windows at PingFang when the user has it, then fall
+   back through the closest CJK faces before any generic sans. */
 :root[data-platform="windows"] {
   --font-sans: "PingFang SC", "PingFang TC", "HarmonyOS Sans SC",
     "Source Han Sans SC", "Noto Sans CJK SC", "Inter var", "Inter",

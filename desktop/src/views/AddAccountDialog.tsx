@@ -1,6 +1,7 @@
-import { UserPlus, X } from "lucide-react";
-import { useState } from "react";
+import { UserPlus } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button, Field } from "../components/ui";
+import { Dialog } from "../components/Dialog";
 
 export function AddAccountDialog({
   open,
@@ -20,77 +21,85 @@ export function AddAccountDialog({
   const [password, setPassword] = useState("");
   const [note, setNote] = useState("");
   const [codeUrl, setCodeUrl] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  if (!open) return null;
+  // The dialog stays mounted, so opening it again used to show the previous
+  // account's credentials.
+  useEffect(() => {
+    if (!open) return;
+    setEmail("");
+    setPassword("");
+    setNote("");
+    setCodeUrl("");
+    setBusy(false);
+  }, [open]);
 
   const valid = /.+@.+\..+/.test(email.trim());
 
+  const submit = async () => {
+    if (!valid || busy) return;
+    setBusy(true);
+    try {
+      await onSubmit({ email: email.trim(), password, note, code_url: codeUrl.trim() });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="modal modal--sm" onMouseDown={(event) => event.stopPropagation()}>
-        <header className="modal__head">
-          <UserPlus style={{ width: 16, color: "var(--amber)" }} />
-          <div>
-            <h2>添加账号</h2>
-            <p>密码只保存在本机，用于后续自动重登</p>
-          </div>
-          <button className="modal__close" onClick={onClose}>
-            <X />
-          </button>
-        </header>
-        <div className="modal__body">
-          <Field label="Apple ID">
-            <input
-              autoFocus
-              type="email"
-              placeholder="apple_id@example.com"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </Field>
-          <Field label="密码">
-            <input
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </Field>
-          <Field
-            label="2FA 链接"
-            hint="可选。留空则登录到两步验证时弹数字键盘手动输入"
-          >
-            <input
-              type="url"
-              placeholder="https://…/getcode?id=123"
-              value={codeUrl}
-              onChange={(event) => setCodeUrl(event.target.value)}
-            />
-          </Field>
-          <Field label="备注" hint="可选，便于在列表中识别">
-            <input placeholder="例如：US 主号" value={note} onChange={(event) => setNote(event.target.value)} />
-          </Field>
-        </div>
-        <footer className="modal__foot">
-          <Button variant="ghost" onClick={onClose}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="添加账号"
+      subtitle="密码只保存在本机；保存后按需单独登录"
+      icon={UserPlus}
+      busy={busy}
+      onSubmit={submit}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
             取消
           </Button>
-          <Button
-            variant="primary"
-            disabled={!valid}
-            onClick={() =>
-              void onSubmit({
-                email: email.trim(),
-                password,
-                note,
-                code_url: codeUrl.trim(),
-              })
-            }
-          >
-            保存并登录
+          <Button variant="primary" type="submit" disabled={!valid} loading={busy}>
+            保存
           </Button>
-        </footer>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <Field label="Apple ID">
+        <input
+          autoFocus
+          name="email"
+          type="email"
+          autoComplete="username"
+          placeholder="apple_id@example.com"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
+      </Field>
+      <Field label="密码" hint="明文保存，可后续在编辑里查看">
+        <input
+          name="password"
+          type="text"
+          autoComplete="current-password"
+          spellCheck={false}
+          placeholder="••••••••"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
+      </Field>
+      <Field label="2FA 链接" hint="可选。留空则登录到两步验证时弹框手动输入">
+        <input
+          name="code_url"
+          type="url"
+          placeholder="https://…/getcode?id=123"
+          value={codeUrl}
+          onChange={(event) => setCodeUrl(event.target.value)}
+        />
+      </Field>
+      <Field label="备注" hint="可选，便于在列表中识别">
+        <input name="note" placeholder="例如：US 主号" value={note} onChange={(event) => setNote(event.target.value)} />
+      </Field>
+    </Dialog>
   );
 }

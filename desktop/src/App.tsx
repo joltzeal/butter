@@ -1,13 +1,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
 import { CommandPalette } from "./components/CommandPalette";
 import { Rail, Titlebar } from "./components/Chrome";
 import { LoginProgress } from "./components/LoginProgress";
 import { Button, Toasts } from "./components/ui";
 import { RealtimeProvider, useRealtime } from "./hooks/useRealtime";
 import { ToastProvider, useToasts } from "./hooks/useToasts";
+import { useSecretUnlock } from "./hooks/useSecretUnlock";
+import { useUpdater } from "./hooks/useUpdater";
 import { useAccounts } from "./hooks/useAccounts";
+import { isTauri } from "./api/client";
 import type { ViewId } from "./lib/types";
 import { WorkspaceView } from "./views/WorkspaceView";
 import { LogsView } from "./views/LogsView";
@@ -24,11 +27,41 @@ const queryClient = new QueryClient({
 function Overlay() {
   const { toasts, dismiss } = useToasts();
   return (
-    <>
+    <div className="overlay-stack">
       <LoginProgress />
       <Toasts toasts={toasts} dismiss={dismiss} />
-    </>
+    </div>
   );
+}
+
+/** Last-resort screen: a render throw used to blank the whole webview. */
+class Boundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="boot">
+        <div className="boot__card">
+          <div className="boot__icon boot__icon--offline">
+            <AlertTriangle />
+          </div>
+          <strong>界面出错了</strong>
+          <pre className="boot__detail">{String(this.state.error.stack ?? this.state.error)}</pre>
+          <div className="row">
+            <Button onClick={() => this.setState({ error: null })}>回到界面</Button>
+            <Button variant="primary" icon={RefreshCw} onClick={() => location.reload()}>
+              重新加载
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 }
 
 function BootScreen() {
@@ -37,45 +70,13 @@ function BootScreen() {
   if (state === "online" || ready) return null;
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 100,
-        display: "grid",
-        placeItems: "center",
-        background: "var(--bg)",
-      }}
-    >
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, maxWidth: 420 }}>
-        <div
-          style={{
-            display: "grid",
-            placeItems: "center",
-            width: 46,
-            height: 46,
-            borderRadius: 15,
-            background: state === "offline" ? "color-mix(in srgb, var(--danger) 18%, transparent)" : "var(--amber-soft)",
-            border: `1px solid ${state === "offline" ? "var(--danger)" : "var(--amber-line)"}`,
-            color: state === "offline" ? "var(--danger)" : "var(--amber)",
-          }}
-        >
-          {state === "offline" ? (
-            <AlertTriangle style={{ width: 20 }} />
-          ) : (
-            <Loader2 className="spin" style={{ width: 20 }} />
-          )}
+    <div className="boot" role="status" aria-live="polite">
+      <div className="boot__card">
+        <div className={state === "offline" ? "boot__icon boot__icon--offline" : "boot__icon"}>
+          {state === "offline" ? <AlertTriangle /> : <Loader2 className="spin" />}
         </div>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>
-            {state === "offline" ? "连接失败" : "启动中…"}
-          </div>
-          {state === "offline" && error ? (
-            <div className="dim tiny" style={{ marginTop: 4, lineHeight: 1.6 }}>
-              {error}
-            </div>
-          ) : null}
-        </div>
+        <strong>{state === "offline" ? "连接失败" : "启动中…"}</strong>
+        {state === "offline" && error ? <div className="boot__detail tiny dim">{error}</div> : null}
         {state === "offline" ? (
           <Button icon={RefreshCw} variant="primary" onClick={reconnect}>
             重试连接
@@ -90,28 +91,65 @@ function Workspace() {
   const [view, setView] = useState<ViewId>("accounts");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { data } = useAccounts();
+  // Panes mount together, so they must not render before the client exists —
+  // every view calls useApi() synchronously.
+  const { api } = useRealtime();
+  const { push } = useToasts();
+  const updater = useUpdater();
+  const { unlocked } = useSecretUnlock();
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setPaletteOpen((v) => !v);
+        setPaletteOpen((open) => !open);
       }
-      if (event.key === "Escape") setPaletteOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const counts = useMemo(
-    () => ({
-      accounts: data?.length ?? 0,
-      cards: data?.filter((a) => a.has_card).length ?? 0,
-    }),
-    [data],
-  );
+  // One quiet check per launch. Only the window can install, so the toast
+  // offers to open the panel instead of pretending it can update in place.
+  useEffect(() => {
+    if (!isTauri()) return;
+    const timer = window.setTimeout(async () => {
+      const update = await updater.find();
+      if (!update) return;
+      push({
+        kind: "info",
+        title: `有新版本 ${update.version}`,
+        detail: "在「设置 → 更新」里下载",
+        action: { label: "去设置", run: () => setView("settings") },
+      });
+    }, 4000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Unlicensed is usable (two accounts); the gate is in the settings panel.
+  // Locking hides the nav item but not the view: without this the app sat on a
+  // page whose entry had just disappeared.
+  useEffect(() => {
+    if (!unlocked && view === "logs") setView("accounts");
+  }, [unlocked, view]);
+
+  const counts = useMemo(() => {
+    const rows = data ?? [];
+    return {
+      accounts: rows.length,
+      cards: rows.filter((a) => a.has_card).length,
+      online: rows.filter((a) => a.status === "online").length,
+    };
+  }, [data]);
+
+  // Views stay mounted: unmounting them threw away scroll, filters, filters and
+  // re-fetched every panel on each nav click.
+  const panes: Array<[ViewId, ReactNode]> = [
+    ["accounts", <WorkspaceView />],
+    ["network", <NetworkView />],
+    ["logs", <LogsView />],
+    ["settings", <SettingsView />],
+  ];
 
   return (
     <div className="shell">
@@ -119,19 +157,21 @@ function Workspace() {
       <Titlebar view={view} onOpenPalette={() => setPaletteOpen(true)} />
       <div className="workspace">
         <Rail view={view} onChange={setView} counts={counts} />
-        <main style={{ minWidth: 0, minHeight: 0, display: "flex" }}>
-          <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-            {view === "accounts" ? <WorkspaceView /> : null}
-            {view === "network" ? <NetworkView /> : null}
-            {view === "logs" ? <LogsView /> : null}
-            {view === "settings" ? <SettingsView /> : null}
-          </div>
+        <main className="pane-host">
+          {api
+            ? panes.map(([id, pane]) => (
+                <div key={id} className="pane" hidden={view !== id}>
+                  {pane}
+                </div>
+              ))
+            : null}
         </main>
       </div>
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         onNavigate={setView}
+        unlocked={unlocked}
       />
       <Overlay />
     </div>
@@ -140,12 +180,14 @@ function Workspace() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <RealtimeProvider>
-        <ToastProvider>
-          <Workspace />
-        </ToastProvider>
-      </RealtimeProvider>
-    </QueryClientProvider>
+    <Boundary>
+      <QueryClientProvider client={queryClient}>
+        <RealtimeProvider>
+          <ToastProvider>
+            <Workspace />
+          </ToastProvider>
+        </RealtimeProvider>
+      </QueryClientProvider>
+    </Boundary>
   );
 }

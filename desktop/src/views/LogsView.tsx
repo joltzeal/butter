@@ -1,4 +1,4 @@
-import { Eraser, ScrollText } from "lucide-react";
+import { ArrowDownToLine, ScrollText } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useRealtime } from "../hooks/useRealtime";
 import { Button, Panel } from "../components/ui";
@@ -17,6 +17,14 @@ const INTERESTING = new Set([
   "batch.done",
 ]);
 
+const FILTERS = [
+  ["all", "全部"],
+  ["login", "登录"],
+  ["billing", "账单"],
+  ["session", "会话"],
+  ["batch", "批量"],
+] as const;
+
 export function LogsView() {
   const { events, state } = useRealtime();
   const [filter, setFilter] = useState<string>("all");
@@ -32,7 +40,7 @@ export function LogsView() {
   }, [filtered.length, pinned]);
 
   return (
-    <div className="page" style={{ maxWidth: "none" }}>
+    <div className="page page--wide">
       <div className="page__head">
         <div>
           <h1>事件</h1>
@@ -40,9 +48,15 @@ export function LogsView() {
         </div>
         <div className="page__actions">
           <div className="seg">
-            {["all", "login", "billing", "session", "batch"].map((value) => (
-              <button key={value} data-on={filter === value} onClick={() => setFilter(value)}>
-                {value === "all" ? "全部" : value}
+            {FILTERS.map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={filter === value}
+                data-on={filter === value}
+                onClick={() => setFilter(value)}
+              >
+                {label}
               </button>
             ))}
           </div>
@@ -52,23 +66,18 @@ export function LogsView() {
       <Panel
         title={`${filtered.length} 条`}
         subtitle={state === "online" ? "通道在线" : "通道离线，等待重连"}
-        bodyClassName=""
         actions={
-          <Button
-            icon={Eraser}
-            variant="ghost"
-            onClick={() => {
-              setPinned(true);
-            }}
-          >
+          <Button icon={ArrowDownToLine} variant="ghost" onClick={() => setPinned(true)} disabled={pinned}>
             回到底部
           </Button>
         }
       >
-        <div className="logs" style={{ height: "calc(100vh - 320px)" }}>
+        <div className="logs">
           <div
             className="logs__list"
             ref={listRef}
+            role="log"
+            aria-live="polite"
             onScroll={(event) => {
               const el = event.currentTarget;
               setPinned(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
@@ -80,10 +89,10 @@ export function LogsView() {
                 还没有事件。执行一次登录或账单操作就会出现在这里。
               </div>
             ) : (
-              filtered.map((event, index) => (
+              filtered.map((event) => (
                 <div
                   className="log-line"
-                  key={index}
+                  key={event.id ?? `${event.event}-${event.ts}`}
                   style={INTERESTING.has(event.event) ? undefined : { opacity: 0.6 }}
                 >
                   <time>{(event.ts ?? "").replace("T", " ").replace("+00:00", "Z")}</time>

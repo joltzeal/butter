@@ -16,6 +16,8 @@ class AccountIn(BaseModel):
 class AccountUpdate(BaseModel):
     password: str | None = None
     note: str | None = None
+    # Renaming the key: sessions and billing cache belong to the old address.
+    email: str | None = None
 
 
 class AccountOut(BaseModel):
@@ -25,6 +27,8 @@ class AccountOut(BaseModel):
     logged_in: bool = False
     last_login: str = ""
     has_password: bool = False
+    # The stored password, in the clear: the UI shows and edits it in place.
+    password_plain: str = ""
     has_des: bool = False
     billing_checked: bool = False
     has_card: bool = False

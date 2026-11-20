@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -153,6 +154,10 @@ class Services:
         self._locks: dict[str, asyncio.Lock] = {}
         # Emails mid-login; the liveness poll skips them.
         self._busy: set[str] = set()
+        # In-flight logins, keyed by address. The request that started one may
+        # go away (aborted fetch, closed window); the task must survive it or
+        # the account stays "busy" until the client gives up waiting.
+        self._login_tasks: dict[str, asyncio.Task] = {}
         self._cancel_check = False
         self._check_running = False
         # Imported lazily: session.py imports core.store, so a module-level
@@ -207,8 +212,18 @@ class Services:
         self.sink.emit(event, payload)
 
     # --- login ------------------------------------------------------------
-    async def login(self, request: LoginRequest, retries: int | None = None) -> dict[str, Any]:
-        account = self.store.get(request.email) or Account(email=request.email)
+    async def login(
+        self, request: LoginRequest, retries: int | None = None, *, inline_store: bool = False
+    ) -> dict[str, Any]:
+        """Log in. ``inline_store`` waits for the store handshake before returning.
+
+        The billing path needs that: a live client without ``as_disa`` cannot
+        read, so handing the request back mid-handshake is what forced a second
+        click.
+        """
+        account = self.store.get(request.email) or Account(
+            email=request.email, created_at=_now()
+        )
         if request.password:
             account.password = request.password
         if request.note:
@@ -232,7 +247,7 @@ class Services:
                 proxy=self._proxy_url(account),
                 code_url=request.code_url or account.code_url,
                 code=request.code,
-                defer_store=True,
+                defer_store=not inline_store,
                 progress=lambda stage: self._emit(
                     "login.progress", email=account.email, attempt=1, stage=stage
                 ),
@@ -242,26 +257,27 @@ class Services:
             self._emit("login.done", email=account.email, ok=False, message=str(exc))
             return {"ok": False, "message": str(exc), "account": account.public()}
 
+        # 2FA: ask once, verify once, on the parked session. No retry ladder —
+        # a rejected code is reported, and the next login opens a new challenge.
         if result.get("hsa2_required") and not result.get("ok"):
-            # The automatic fetch produced nothing usable (no code_url, or the
-            # endpoint timed out). Ask the operator for the digits instead of
-            # failing the login.
             reason = (
-                "没有可用的 2FA 链接，请手动输入设备上收到的验证码"
+                "没有 2FA 链接，请输入设备上收到的验证码"
                 if not (request.code_url or account.code_url)
-                else "2FA 链接没有取到有效验证码，请手动输入"
+                else "2FA 链接没有取到验证码，请手动输入"
             )
             self._emit("login.progress", email=account.email, attempt=1, stage="hsa2")
             code = await self._request_hsa2(account.email, reason)
             if not code:
                 message = "已取消两步验证"
                 self._emit("login.done", email=account.email, ok=False, message=message)
+                self._mark_busy(account.email, False)
                 return {"ok": False, "message": message, "account": account.public()}
             try:
-                retried = await protocol_login(
+                result = await protocol_login(
                     account.email,
                     account.password,
                     proxy=self._proxy_url(account),
+                    resume=result.get("client"),
                     code=code,
                     progress=lambda stage: self._emit(
                         "login.progress", email=account.email, attempt=2, stage=stage
@@ -271,7 +287,6 @@ class Services:
                 self._emit("login.done", email=account.email, ok=False, message=str(exc))
                 self._mark_busy(account.email, False)
                 return {"ok": False, "message": str(exc), "account": account.public()}
-            result = retried
 
         session = result.get("session")
         if session is not None:
@@ -298,14 +313,18 @@ class Services:
             _client.stk = result.get("stk") or ""
             self.sessions.attach(account.email, session, _client)
             if result.get("store_pending"):
-                # authx costs ~9s server-side; run it after the account is
-                # already usable instead of blocking the login response.
-                # Reuse the very client the login chain built: its jar holds
-                # the shld cookies and page meta, and the edge binds as_disa
-                # to this connection.
-                self._spawn_store_handshake(account.email, result.get("client") or _client)
+                # authx costs ~9s server-side. Normally it runs after the
+                # account is already usable; a caller that is about to read
+                # waits for it instead. Reuse the very client the login chain
+                # built: its jar holds the shld cookies and page meta, and the
+                # edge binds as_disa to this connection.
+                store_client = result.get("client") or _client
+                if inline_store:
+                    await self._store_handshake(account.email, store_client)
+                else:
+                    self._spawn_store_handshake(account.email, store_client)
         self._emit("login.done", email=account.email, ok=account.logged_in, message=result["message"])
-        if not result.get("store_pending"):
+        if inline_store or not result.get("store_pending"):
             self._mark_busy(account.email, False)
         return {"ok": account.logged_in, "message": result["message"], "account": account.public()}
 
@@ -333,10 +352,10 @@ class Services:
         if account is None:
             return {"ok": False, "message": "账号不存在"}
 
-        # Offline accounts are logged in first: the operator asked for the form,
-        # not for a status report. A login that stops on 2FA leaves the request
-        # here; submitting the code finishes the login, which reads the billing
-        # itself once its store handshake is done.
+        # One press, end to end: a dead session is logged in *inside* this
+        # request (2FA prompt included), and the same call then reads the
+        # billing. Returning early at "I started a login" is what made the
+        # operator click twice.
         ensured = await self._ensure_session(account)
         if ensured is not None:
             return ensured
@@ -486,74 +505,82 @@ class Services:
         """Finish the store handshake off the request path."""
 
         async def run() -> None:
-            self._emit("login.progress", email=email, stage="store")
-            try:
-                # The login chain hands back its own IdmsaClient, which already
-                # knows ssi / stk / shld for this connection. Calling its
-                # step_acquire_as_disa is what the synchronous flow does inline;
-                # a freshly built StoreClient would answer 541.
-                acquire = getattr(client, "step_acquire_as_disa", None)
-                if acquire is not None:
-                    state = getattr(client, "state", None)
-                    await asyncio.to_thread(acquire)
-                    ok = bool(getattr(state, "as_disa", ""))
-                    if ok:
-                        # authx rotates x-aos-stk and issues as_disa; the store
-                        # client still holds the pre-authx values, which answer
-                        # 541. Push the fresh ones onto it before anything probes.
-                        live = self.sessions.live_client(email)
-                        if live is not None:
-                            live.stk = getattr(state, "stk", "") or ""
-                            live.as_disa = getattr(state, "as_disa", "") or ""
-                            live.as_sfa = getattr(state, "as_sfa", "") or ""
-                            if getattr(client, "store_base", ""):
-                                live.base = client.store_base
-                    if ok:
-                        self.sessions.save(
-                            email,
-                            client.s,
-                            stk=getattr(state, "stk", "") or "",
-                            store_base=getattr(client, "store_base", ""),
-                        )
-                else:
-                    ok = await asyncio.to_thread(client.prepare)
-            except Exception as exc:  # noqa: BLE001 - the next billing call retries
-                LOGGER.info("[login] 后台 store 握手失败 %s: %s", email, exc)
-                self._emit("login.done", email=email, ok=True,
-                           message="已登录（账单需要手动刷新）")
-                self._mark_busy(email, False)
-                return
-            if not ok:
-                LOGGER.info("[login] 后台 store 握手未成功 %s", email)
-            # Refresh the cache so the panel shows reality instead of the empty
-            # shell a previous failed read may have left behind.
-            live = self.sessions.live_client(email)
-            if live is not None and ok:
-                try:
-                    info = await asyncio.to_thread(live.fetch_billing_info)
-                    account_now = self.store.get(email)
-                    if account_now is not None:
-                        account_now.has_card = bool(info.get("has_card"))
-                        account_now.card_suffix = str(info.get("card_suffix") or "")
-                        account_now.billing_checked = True
-                        self.store.save()
-                        self._emit("billing.fetched", email=email, info=info)
-                except Exception as exc:  # noqa: BLE001 - best effort
-                    LOGGER.info("[login] 登录后读账单失败 %s: %s", email, exc)
-
-            stk_now = getattr(getattr(client, "state", None), "stk", "") or \
-                getattr(client, "stk", "") or ""
-            self.sessions.save(email, client.s, stk=stk_now,
-                               store_base=getattr(client, "store_base", "")
-                               or getattr(client, "base", ""))
+            await self._store_handshake(email, client)
             self._mark_busy(email, False)
-            self._emit("login.done", email=email, ok=True,
-                       message="已登录，账单可用")
+            self._emit("login.done", email=email, ok=True, message="已登录，账单可用")
 
         try:
             asyncio.get_running_loop().create_task(run())
         except RuntimeError:  # no loop (sync caller) — leave it to the next call
             LOGGER.debug("[login] 无事件循环，跳过后台握手")
+
+    async def _store_handshake(self, email: str, client) -> bool:
+        """authx + a priming read. Returns False when the handshake failed.
+
+        Does no bookkeeping of its own (busy flag, login.done) so it can run
+        inline inside a request or detached in a background task.
+        """
+        self._emit("login.progress", email=email, stage="store")
+        try:
+            # The login chain hands back its own IdmsaClient, which already
+            # knows ssi / stk / shld for this connection. Calling its
+            # step_acquire_as_disa is what the synchronous flow does inline; a
+            # freshly built StoreClient would answer 541.
+            acquire = getattr(client, "step_acquire_as_disa", None)
+            if acquire is not None:
+                state = getattr(client, "state", None)
+                await asyncio.to_thread(acquire)
+                ok = bool(getattr(state, "as_disa", ""))
+                if ok:
+                    # authx rotates x-aos-stk and issues as_disa; the store
+                    # client still holds the pre-authx values, which answer 541.
+                    # Push the fresh ones onto it before anything probes.
+                    live = self.sessions.live_client(email)
+                    if live is not None:
+                        live.stk = getattr(state, "stk", "") or ""
+                        live.as_disa = getattr(state, "as_disa", "") or ""
+                        live.as_sfa = getattr(state, "as_sfa", "") or ""
+                        if getattr(client, "store_base", ""):
+                            live.base = client.store_base
+                if ok:
+                    self.sessions.save(
+                        email,
+                        client.s,
+                        stk=getattr(state, "stk", "") or "",
+                        store_base=getattr(client, "store_base", ""),
+                    )
+            else:
+                ok = await asyncio.to_thread(client.prepare)
+        except Exception as exc:  # noqa: BLE001 - the next billing call retries
+            LOGGER.info("[login] store 握手失败 %s: %s", email, exc)
+            return False
+
+        if not ok:
+            LOGGER.info("[login] store 握手未成功 %s", email)
+            return False
+
+        # Refresh the cache so the panel shows reality instead of the empty
+        # shell a previous failed read may have left behind.
+        live = self.sessions.live_client(email)
+        if live is not None:
+            try:
+                info = await asyncio.to_thread(live.fetch_billing_info)
+                account_now = self.store.get(email)
+                if account_now is not None:
+                    account_now.has_card = bool(info.get("has_card"))
+                    account_now.card_suffix = str(info.get("card_suffix") or "")
+                    account_now.billing_checked = True
+                    self.store.save()
+                    self._emit("billing.fetched", email=email, info=info)
+            except Exception as exc:  # noqa: BLE001 - best effort
+                LOGGER.info("[login] 登录后读账单失败 %s: %s", email, exc)
+
+        stk_now = getattr(getattr(client, "state", None), "stk", "") or \
+            getattr(client, "stk", "") or ""
+        self.sessions.save(email, client.s, stk=stk_now,
+                           store_base=getattr(client, "store_base", "")
+                           or getattr(client, "base", ""))
+        return True
 
     def _billing_client(self, account: Account):
         """Return (client, owns_session) backed by the verified sync client.
@@ -606,6 +633,11 @@ class Services:
             missing = validate_form(form.as_dict())
             if missing:
                 return {"ok": False, "message": f"缺少字段: {', '.join(missing)}"}
+
+        # Saving needs a live client too; re-read the same single-press rule.
+        ensured = await self._ensure_session(account)
+        if ensured is not None:
+            return {"ok": False, "message": ensured.get("message") or "会话不可用"}
 
         async with self._lock(email):
             client, own_session = self._billing_client(account)
@@ -711,28 +743,93 @@ class Services:
         return {"ok": True, "message": success, "info": info,
                 "account": account.public()}
 
-    async def _ensure_session(self, account: Account) -> dict[str, Any] | None:
-        """Make sure the account can answer, else start a login and say so.
+    def _session_alive(self, email: str) -> bool:
+        client = self.sessions.live_client(email)
+        return bool(client and client.alive_payload())
 
-        The login is *spawned*, not awaited: a 2FA stop would otherwise hold the
-        HTTP request for minutes. Once the code is submitted the login finishes
-        and reads the billing itself.
+    async def _ensure_session(
+        self, account: Account, wait_seconds: float = 330
+    ) -> dict[str, Any] | None:
+        """Make sure the account can answer, logging in when it cannot.
+
+        The read waits for the login instead of handing back "I started one":
+        one press has to end in billing, not in a second press.
         """
+        email = account.email
 
-        def alive() -> bool:
-            client = self.sessions.live_client(account.email)
-            return bool(client and client.alive_payload())
-
-        if await asyncio.to_thread(alive):
+        if await asyncio.to_thread(self._session_alive, email):
             return None
-        if self._is_busy(account.email):
-            return {"ok": False, "awaiting_hsa2": True, "message": "正在登录，等待验证码"}
-        if not account.password:
-            return {"ok": False, "message": "会话已失效，且没有保存密码，请先重登"}
 
-        self._emit("billing.progress", email=account.email, stage="login")
-        asyncio.get_running_loop().create_task(self.login(LoginRequest(email=account.email)))
-        return {"ok": False, "awaiting_hsa2": True, "message": "会话已失效，正在重新登录"}
+        # A login already running for this address — ours from an aborted
+        # request, or the 登录 button — is awaited, not duplicated.
+        running = self._login_tasks.get(email)
+        if running is not None and not running.done():
+            return await self._await_login(account, running, wait_seconds)
+
+        if self._is_busy(email):
+            deadline = time.monotonic() + wait_seconds
+            while self._is_busy(email) and time.monotonic() < deadline:
+                await asyncio.sleep(0.5)
+                if await asyncio.to_thread(self._session_alive, email):
+                    return None
+            if await asyncio.to_thread(self._session_alive, email):
+                return None
+            return {"ok": False, "awaiting_hsa2": False, "message": "登录还没有完成，请稍后再试"}
+
+        if not account.password:
+            return {"ok": False, "awaiting_hsa2": False, "message": "会话已失效，且没有保存密码，请先重登"}
+
+        self._emit("billing.progress", email=email, stage="login")
+        task = asyncio.get_running_loop().create_task(
+            self.login(LoginRequest(email=email), inline_store=True)
+        )
+        self._login_tasks[email] = task
+        task.add_done_callback(lambda _t: self._login_tasks.pop(email, None))
+        return await self._await_login(account, task, wait_seconds)
+
+    async def _await_login(
+        self, account: Account, task: asyncio.Task, wait_seconds: float
+    ) -> dict[str, Any] | None:
+        """Wait on a login task without owning it.
+
+        ``shield`` matters: when the HTTP request is aborted, the login keeps
+        running and the next press picks the same task up again.
+        """
+        try:
+            result = await asyncio.wait_for(asyncio.shield(task), timeout=wait_seconds)
+        except TimeoutError:
+            return {"ok": False, "awaiting_hsa2": False, "message": "登录超时，请稍后再试"}
+        except asyncio.CancelledError:
+            raise
+        if not await asyncio.to_thread(self._session_alive, account.email):
+            return {
+                "ok": False,
+                "awaiting_hsa2": False,
+                "message": (result or {}).get("message") or "登录没完成，会话仍不可用",
+            } if not result.get("ok") else {
+                "ok": False,
+                "awaiting_hsa2": False,
+                "message": "登录完成，但会话仍不可用，请重试",
+            }
+        return None
+
+    async def logout(self, email: str) -> dict[str, Any]:
+        """Drop the session: the live socket, the cookie jar and the stored login.
+
+        The row, password, note and card summary stay — what goes away is the
+        ability to act as the account until it logs in again.
+        """
+        account = self.store.get(email)
+        if account is None:
+            return {"ok": False, "message": "账号不存在"}
+        client = self.sessions.live_client(email)
+        if client is not None:
+            with contextlib.suppress(Exception):
+                client.s.close()
+        self.sessions.detach(email)
+        self.sessions.clear(email)
+        self._emit("account.status", email=email, status="idle")
+        return {"ok": True, "status": "idle", "message": "已登出"}
 
     # --- session health ---------------------------------------------------
     async def check_session(self, email: str) -> dict[str, Any]:
@@ -765,11 +862,12 @@ class Services:
         self._cancel_check = False
         self._check_running = True
         results = []
-        for email in targets:
+        for position, email in enumerate(targets, start=1):
             if self._cancel_check:
                 LOGGER.info("[session] 检测已取消")
                 break
-            self._emit("session.progress", email=email)
+            # The counter lets the UI show one card per account with "2/5".
+            self._emit("session.progress", email=email, index=position, total=len(targets))
             results.append({"email": email, **await self.check_session(email)})
             await asyncio.sleep(0.4)
         self._check_running = False

@@ -131,6 +131,8 @@ class Account:
     logged_in: bool = False
     last_login: str = ""
     status: str = "idle"  # idle | checking | online | offline
+    # Insertion stamp; the list reads oldest-first so new rows land at the end.
+    created_at: str = ""
     billing_checked: bool = False
     has_card: bool = False
     card_suffix: str = ""
@@ -147,6 +149,7 @@ class Account:
     def public(self) -> dict[str, Any]:
         data = asdict(self)
         data["password"] = "***" if self.password else ""
+        data["password_plain"] = self.password
         data["has_password"] = bool(self.password)
         data["has_des"] = self.has_des
         return data
@@ -181,7 +184,9 @@ class AccountStore:
 
     @property
     def accounts(self) -> list[Account]:
-        return self._accounts
+        # Oldest first: a freshly added account belongs at the bottom of the
+        # table, not wherever it happened to be appended.
+        return sorted(self._accounts, key=lambda a: a.created_at or "")
 
     def get(self, email: str) -> Account | None:
         return next((a for a in self._accounts if a.email.lower() == email.lower()), None)

@@ -42,6 +42,12 @@ from .. import __version__ as _VERSION  # noqa: E402
 # An unlicensed copy may hold this many accounts; a licence removes the cap.
 FREE_ACCOUNTS = 2
 
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
 # The Tauri webview uses a privileged scheme; Vite dev serves from localhost.
 # Both are loopback-owned, so a bounded regex is safer than "*" with credentials.
 CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
@@ -222,6 +228,9 @@ def create_app() -> FastAPI:
             "licensed": os.environ.get("BUTTER_LICENSED") == "1",
             "plan": os.environ.get("BUTTER_PLAN", ""),
             "exp": int(os.environ.get("BUTTER_EXP") or 0),
+            # The renderer needs it for activation; inside the webview the
+            # Tauri command can fail and would post an empty machine.
+            "machine": os.environ.get("BUTTER_MACHINE", ""),
             "free_limit": FREE_ACCOUNTS,
         }
 
@@ -253,7 +262,10 @@ def create_app() -> FastAPI:
             raise HTTPException(409, f"{email} 已在列表中")
         if os.environ.get("BUTTER_LICENSED") != "1" and len(st.store.accounts) >= FREE_ACCOUNTS:
             raise HTTPException(402, f"未激活最多 {FREE_ACCOUNTS} 个账号，激活后不限")
-        account = Account(email=email, password=payload.password, note=payload.note)
+        account = Account(
+            email=email, password=payload.password, note=payload.note,
+            created_at=_now_iso(),
+        )
         # Write first, then let the login run: the row must exist even if the
         # login never completes (2FA abandoned, wrong password).
         st.store.upsert(account)
@@ -265,6 +277,19 @@ def create_app() -> FastAPI:
         account = st.store.get(email)
         if account is None:
             raise HTTPException(404, "account not found")
+        if payload.email is not None:
+            new = payload.email.strip()
+            if not new:
+                raise HTTPException(400, "email required")
+            if new.lower() != account.email.lower() and any(
+                a.email.lower() == new.lower() for a in st.store.accounts
+            ):
+                raise HTTPException(409, f"{new} 已在列表中")
+            # The old address owns the session; keep the data, move the key.
+            if new.lower() != account.email.lower():
+                account.email = new
+                if account.code_url and new:
+                    pass  # code_url is per-account, it stays as-is
         if payload.password is not None:
             account.password = payload.password
         if payload.note is not None:
@@ -309,6 +334,18 @@ def create_app() -> FastAPI:
             # the account stays "logging in" forever.
             if not (result and result.get("store_pending")):
                 st.services._mark_busy(payload.email.strip(), False)
+
+    @app.post("/api/accounts/{email}/logout")
+    async def logout_account(email: str) -> dict[str, Any]:
+        st = get_state()
+        # A parked 2FA prompt belongs to the session that is going away; keeping
+        # the flag would reopen the code dialog for a logged-out account, and
+        # dropping the future without resolving it would strand the waiter.
+        waiting = st.pending_hsa2.pop(email.strip().lower(), None)
+        if waiting is not None and not waiting.done():
+            waiting.set_result(None)
+        st.services._mark_busy(email.strip(), False)
+        return await st.services.logout(email.strip())
 
     @app.post("/api/accounts/{email}/hsa2")
     async def hsa2(email: str, payload: Hsa2In) -> dict[str, bool]:

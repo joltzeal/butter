@@ -1,5 +1,5 @@
 import { clsx } from "clsx";
-import { Check, type LucideIcon, X } from "lucide-react";
+import { Check, Loader2, type LucideIcon, X } from "lucide-react";
 import type { ReactNode } from "react";
 
 type Variant = "primary" | "ghost" | "danger" | "sm" | "icon" | "default";
@@ -9,8 +9,10 @@ export function Button({
   icon: Icon,
   onClick,
   disabled,
+  loading,
   variant = "default",
   title,
+  ariaLabel,
   type = "button",
   className,
 }: {
@@ -18,6 +20,9 @@ export function Button({
   icon?: LucideIcon;
   onClick?: () => void;
   disabled?: boolean;
+  /** Swaps the icon for a spinner and blocks a second press. */
+  loading?: boolean;
+  ariaLabel?: string;
   variant?: Variant | Variant[];
   title?: string;
   type?: "button" | "submit";
@@ -28,8 +33,10 @@ export function Button({
     <button
       type={type}
       title={title}
+      aria-label={ariaLabel}
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       className={clsx(
         "btn",
         variants.includes("primary") && "btn--primary",
@@ -40,7 +47,7 @@ export function Button({
         className,
       )}
     >
-      {Icon ? <Icon /> : null}
+      {loading ? <Loader2 className="spin" /> : Icon ? <Icon /> : null}
       {children}
     </button>
   );
@@ -65,12 +72,22 @@ export function Badge({
   );
 }
 
-export function Checkbox({ on, onChange }: { on: boolean; onChange: (next: boolean) => void }) {
+export function Checkbox({
+  on,
+  onChange,
+  label,
+}: {
+  on: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+}) {
   return (
     <button
       type="button"
       role="checkbox"
       aria-checked={on}
+      aria-label={label}
+      title={label}
       data-on={on}
       className="checkbox"
       onClick={(event) => {
@@ -179,27 +196,30 @@ export function Toasts({
     kind: "ok" | "error" | "info";
     title: string;
     detail?: string;
-    /** Closing also aborts whatever the toast is reporting on. */
-    onCancel?: () => void;
+    /** Closing only hides the toast; the action is a separate button. */
+    action?: { label: string; run: () => void };
   }>;
   dismiss: (id: number) => void;
 }) {
   return (
-    <div className="toasts">
+    <div className="toasts" role="status" aria-live="polite" aria-relevant="additions text">
       {toasts.map((toast) => (
         <div key={toast.id} className={clsx("toast", `toast--${toast.kind}`)}>
           <div className="toast__bar" />
           <div className="toast__body">
             <strong>{toast.title}</strong>
             {toast.detail ? <span>{toast.detail}</span> : null}
+            {toast.action ? (
+              <button type="button" className="toast__action" onClick={toast.action.run}>
+                {toast.action.label}
+              </button>
+            ) : null}
           </div>
           <button
+            type="button"
             className="toast__close"
-            onClick={() => {
-              dismiss(toast.id);
-              toast.onCancel?.();
-            }}
-            aria-label={toast.onCancel ? "取消" : "关闭"}
+            onClick={() => dismiss(toast.id)}
+            aria-label="关闭通知"
           >
             <X />
           </button>

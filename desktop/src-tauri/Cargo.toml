@@ -1,6 +1,6 @@
 [package]
 name = "butter"
-version = "0.1.21"
+version = "0.1.22"
 description = "Butter — Apple ID / Store billing console"
 authors = ["ameno"]
 edition = "2021"
@@ -16,6 +16,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }

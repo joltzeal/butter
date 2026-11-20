@@ -1,23 +1,38 @@
 import { Activity, Plus, Power, RotateCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { ClashLiveNode, ClashStatus, ProxyStatus, Settings } from "../api/client";
+import { isRunning, type ClashLiveNode, type ClashStatus, type ProxyStatus, type Settings } from "../api/client";
 import { useApi } from "../hooks/useRealtime";
 import { useToasts } from "../hooks/useToasts";
-import { Badge, Button, Field, Panel, Skeleton } from "../components/ui";
+import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
+import { Badge, Button, Empty, Field, Panel, Skeleton } from "../components/ui";
 
 export function NetworkView() {
   const api = useApi();
   const { push } = useToasts();
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<ProxyStatus | null>(null);
   const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
   const [busy, setBusy] = useState(false);
   const [clash, setClash] = useState<ClashStatus | null>(null);
   const [nodeFilter, setNodeFilter] = useState("");
+  const [portDraft, setPortDraft] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const loadSettings = async () => {
+    setError(null);
+    try {
+      const next = await api.getSettings();
+      setSettings(next);
+      setPortDraft(next.proxy_port ? String(next.proxy_port) : "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "读取网络设置失败");
+    }
+  };
 
   useEffect(() => {
-    void api.getSettings().then(setSettings);
-    void api.proxyStatus().then(setStatus);
+    void loadSettings();
+    void api.proxyStatus().then(setStatus).catch(() => {});
   }, [api]);
 
   useEffect(() => {
@@ -32,41 +47,66 @@ export function NetworkView() {
     if (settings?.proxy_mode === "clash") void api.clashStatus().then(setClash).catch(() => undefined);
   }, [api, settings?.proxy_mode]);
 
+  const { run: queueSave } = useDebouncedCallback(async (next: Partial<Settings>) => {
+    try {
+      await api.saveSettings(next);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1200);
+    } catch (err) {
+      const fresh = await api.getSettings().catch(() => null);
+      if (fresh) {
+        setSettings(fresh);
+        setPortDraft(fresh.proxy_port ? String(fresh.proxy_port) : "");
+      }
+      push({ kind: "error", title: "设置未保存", detail: String(err) });
+    }
+  }, 300);
+
   if (!settings) {
     return (
       <div className="page">
-        <Skeleton height={42} />
-        <Skeleton height={220} />
-        <Skeleton height={160} />
+        {error ? (
+          <Empty icon={Activity} title="无法读取网络设置" action={<Button onClick={() => void loadSettings()}>重试</Button>}>
+            {error}
+          </Empty>
+        ) : (
+          <>
+            <Skeleton height={42} />
+            <Skeleton height={220} />
+            <Skeleton height={160} />
+          </>
+        )}
       </div>
     );
   }
 
-  const patch = async (next: Partial<Settings>) => {
-    const merged = { ...settings, ...next };
-    setSettings(merged);
-    await api.saveSettings(next);
+  const patch = (next: Partial<Settings>) => {
+    setSettings((prev) => (prev ? { ...prev, ...next } : prev));
+    queueSave(next);
   };
 
+  const upstream = settings.proxy_mode === "custom" || settings.proxy_mode === "mihomo";
+
   const addNode = () =>
-    void patch({
+    patch({
       hk_nodes: [...settings.hk_nodes, { type: "ss", server: "", port: 443, cipher: "aes-128-gcm", password: "" }],
     });
 
   const updateNode = (index: number, key: string, value: string | number) => {
     const nodes = settings.hk_nodes.map((node, i) => (i === index ? { ...node, [key]: value } : node));
-    void patch({ hk_nodes: nodes });
+    patch({ hk_nodes: nodes });
   };
 
-  const removeNode = (index: number) =>
-    void patch({ hk_nodes: settings.hk_nodes.filter((_, i) => i !== index) });
+  const removeNode = (index: number) => patch({ hk_nodes: settings.hk_nodes.filter((_, i) => i !== index) });
+
+  const running = isRunning(status);
 
   return (
     <div className="page">
       <div className="page__head">
         <div>
           <h1>网络</h1>
-          <p>代理模式决定每个请求的出口线路</p>
+          <p>代理模式决定每个请求的出口线路{saved ? " · 已保存" : ""}</p>
         </div>
         <div className="page__actions">
           <Button
@@ -74,8 +114,7 @@ export function NetworkView() {
             variant="ghost"
             onClick={async () => {
               try {
-                const next = await api.proxyStatus();
-                setStatus(next);
+                setStatus(await api.proxyStatus());
               } catch (err) {
                 push({ kind: "error", title: "状态查询失败", detail: String(err) });
               }
@@ -86,7 +125,7 @@ export function NetworkView() {
         </div>
       </div>
 
-      <Panel title="出口模式" subtitle="修改后立即持久化到 settings.json">
+      <Panel title="出口模式" subtitle="修改后 0.3 秒自动保存">
         <div className="seg" style={{ marginBottom: 12 }}>
           {(
             [
@@ -96,7 +135,13 @@ export function NetworkView() {
               ["mihomo", "内置代理"],
             ] as const
           ).map(([value, label]) => (
-            <button key={value} data-on={settings.proxy_mode === value} onClick={() => void patch({ proxy_mode: value })}>
+            <button
+              key={value}
+              type="button"
+              aria-pressed={settings.proxy_mode === value}
+              data-on={settings.proxy_mode === value}
+              onClick={() => patch({ proxy_mode: value })}
+            >
               {label}
             </button>
           ))}
@@ -112,47 +157,79 @@ export function NetworkView() {
                 : "内置代理：由 Butter 自动配置；不加节点为单跳，添加节点后按顺序轮换出站。"}
         </div>
 
+        {upstream && !settings.proxy_host ? (
+          <div className="note note--warn tiny" style={{ marginBottom: 10 }}>
+            还没有填上游主机，这个模式暂时不会有出口。
+          </div>
+        ) : null}
+
         {settings.proxy_mode === "direct" ? (
           <Field label="自定义代理 URL" hint="留空则完全直连，例如 socks5h://127.0.0.1:1080">
             <input
+              name="proxy_url"
               value={settings.proxy_url}
               placeholder="(直连)"
-              onChange={(event) => void patch({ proxy_url: event.target.value })}
+              onChange={(event) => patch({ proxy_url: event.target.value })}
             />
           </Field>
         ) : null}
 
-        {settings.proxy_mode !== "direct" ? (
+        {upstream ? (
           <div className="grid-3">
             <Field label="上游主机">
-              <input value={settings.proxy_host} onChange={(event) => void patch({ proxy_host: event.target.value })} />
+              <input
+                name="proxy_host"
+                autoComplete="off"
+                value={settings.proxy_host}
+                onChange={(event) => patch({ proxy_host: event.target.value })}
+              />
             </Field>
             <Field label="端口">
               <input
-                value={settings.proxy_port || ""}
+                name="proxy_port"
                 inputMode="numeric"
-                onChange={(event) => void patch({ proxy_port: Number(event.target.value.replace(/\D/g, "")) || 0 })}
+                value={portDraft}
+                onChange={(event) => setPortDraft(event.target.value.replace(/\D/g, ""))}
+                onBlur={() => {
+                  const next = Math.min(65535, Number(portDraft) || 0);
+                  setPortDraft(next ? String(next) : "");
+                  if (next !== settings.proxy_port) patch({ proxy_port: next });
+                }}
               />
             </Field>
             <Field label="类型">
-              <select value={settings.proxy_type} onChange={(event) => void patch({ proxy_type: event.target.value })}>
+              <select
+                name="proxy_type"
+                value={settings.proxy_type}
+                onChange={(event) => patch({ proxy_type: event.target.value })}
+              >
                 <option value="socks5">socks5</option>
                 <option value="http">http</option>
                 <option value="https">https</option>
               </select>
             </Field>
             <Field label="用户名">
-              <input value={settings.proxy_user} onChange={(event) => void patch({ proxy_user: event.target.value })} />
+              <input
+                name="proxy_user"
+                autoComplete="off"
+                value={settings.proxy_user}
+                onChange={(event) => patch({ proxy_user: event.target.value })}
+              />
             </Field>
             <Field label="密码">
               <input
-                type="password"
+                name="proxy_pass"
+                autoComplete="off"
                 value={settings.proxy_pass}
-                onChange={(event) => void patch({ proxy_pass: event.target.value })}
+                onChange={(event) => patch({ proxy_pass: event.target.value })}
               />
             </Field>
             <Field label="落地线路">
-              <select value={settings.line} onChange={(event) => void patch({ line: event.target.value as "HK" | "US" })}>
+              <select
+                name="line"
+                value={settings.line}
+                onChange={(event) => patch({ line: event.target.value as "HK" | "US" })}
+              >
                 <option value="HK">HK</option>
                 <option value="US">US</option>
               </select>
@@ -180,22 +257,25 @@ export function NetworkView() {
             {settings.hk_nodes.map((node, index) => (
               <div className="node" key={index}>
                 <input
+                  aria-label={`节点 ${index + 1} 服务器`}
                   placeholder="server"
                   value={node.server}
                   onChange={(event) => updateNode(index, "server", event.target.value)}
                 />
                 <input
+                  aria-label={`节点 ${index + 1} 端口`}
                   placeholder="port"
-                  value={node.port || ""}
                   inputMode="numeric"
+                  value={node.port || ""}
                   onChange={(event) => updateNode(index, "port", Number(event.target.value.replace(/\D/g, "")) || 0)}
                 />
                 <input
+                  aria-label={`节点 ${index + 1} 密码`}
                   placeholder="password"
                   value={node.password}
                   onChange={(event) => updateNode(index, "password", event.target.value)}
                 />
-                <Button icon={Trash2} variant="ghost" onClick={() => removeNode(index)} title="删除节点" />
+                <Button icon={Trash2} variant="ghost" onClick={() => removeNode(index)} ariaLabel="删除节点" />
               </div>
             ))}
           </div>
@@ -215,9 +295,13 @@ export function NetworkView() {
               icon={Activity}
               variant="ghost"
               onClick={async () => {
-                const next = await api.clashStatus();
-                setClash(next);
-                if (!next.ok) push({ kind: "error", title: "代理未连接", detail: next.message });
+                try {
+                  const next = await api.clashStatus();
+                  setClash(next);
+                  if (!next.ok) push({ kind: "error", title: "代理未连接", detail: next.message });
+                } catch (err) {
+                  push({ kind: "error", title: "检测失败", detail: String(err) });
+                }
               }}
             >
               重新检测
@@ -227,23 +311,25 @@ export function NetworkView() {
           <div className="grid-3" style={{ marginBottom: 12 }}>
             <Field label="控制接口" hint="代理客户端的本地控制地址">
               <input
+                name="clash_api"
                 value={settings.clash_api}
                 placeholder="127.0.0.1:9090"
-                onChange={(event) => void patch({ clash_api: event.target.value })}
+                onChange={(event) => patch({ clash_api: event.target.value })}
               />
             </Field>
             <Field label="SOCKS 入站" hint="请求从这里出去">
               <input
+                name="clash_socks"
                 value={settings.clash_socks}
                 placeholder="socks5h://127.0.0.1:7890"
-                onChange={(event) => void patch({ clash_socks: event.target.value })}
+                onChange={(event) => patch({ clash_socks: event.target.value })}
               />
             </Field>
             <Field label="密钥" hint="没设就留空">
               <input
-                type="password"
+                name="clash_secret"
                 value={settings.clash_secret}
-                onChange={(event) => void patch({ clash_secret: event.target.value })}
+                onChange={(event) => patch({ clash_secret: event.target.value })}
               />
             </Field>
           </div>
@@ -255,9 +341,10 @@ export function NetworkView() {
             </div>
             <div className="setting-row__control">
               <select
+                aria-label="切换组"
                 style={{ width: 220 }}
                 value={settings.clash_group}
-                onChange={(event) => void patch({ clash_group: event.target.value })}
+                onChange={(event) => patch({ clash_group: event.target.value })}
               >
                 <option value="">（未选择）</option>
                 {(clash?.groups ?? []).map((group) => (
@@ -302,6 +389,8 @@ export function NetworkView() {
             </div>
             <div className="setting-row__control" style={{ minWidth: 320 }}>
               <input
+                aria-label="筛选节点"
+                type="search"
                 placeholder="筛选：香港 / 美国 / 英国"
                 value={nodeFilter}
                 onChange={(event) => setNodeFilter(event.target.value)}
@@ -312,8 +401,7 @@ export function NetworkView() {
           <div className="nodes" style={{ maxHeight: 240, overflow: "auto", marginTop: 8 }}>
             {(clash?.nodes ?? [])
               .filter(
-                (node: ClashLiveNode) =>
-                  !nodeFilter || node.name.toLowerCase().includes(nodeFilter.toLowerCase()),
+                (node: ClashLiveNode) => !nodeFilter || node.name.toLowerCase().includes(nodeFilter.toLowerCase()),
               )
               .slice(0, 60)
               .map((node) => (
@@ -339,9 +427,7 @@ export function NetworkView() {
                   </span>
                 </button>
               ))}
-            {clash?.ok && (clash.nodes ?? []).length === 0 ? (
-              <div className="dim tiny">暂时没有可用节点。</div>
-            ) : null}
+            {clash?.ok && (clash.nodes ?? []).length === 0 ? <div className="dim tiny">暂时没有可用节点。</div> : null}
           </div>
         </Panel>
       ) : null}
@@ -350,7 +436,7 @@ export function NetworkView() {
         title="内置代理"
         subtitle={
           settings.proxy_mode === "mihomo"
-            ? "需要先完成代理配置"
+            ? "需要先完成上面的代理配置"
             : "仅「内置代理」模式需要在这里启动；「本机代理」会复用已运行的客户端"
         }
         actions={
@@ -358,32 +444,33 @@ export function NetworkView() {
             <Button
               icon={RotateCw}
               variant="ghost"
+              loading={busy}
               onClick={async () => {
                 setBusy(true);
                 try {
-                  const next = await api.previewProfile();
-                  setProfile(next);
+                  setProfile(await api.previewProfile());
                 } catch (err) {
                   push({ kind: "error", title: "生成配置失败", detail: String(err) });
                 } finally {
                   setBusy(false);
                 }
               }}
-              disabled={busy || settings.proxy_mode !== "mihomo"}
+              disabled={settings.proxy_mode !== "mihomo"}
             >
               预览配置
             </Button>
             <Button
               icon={Power}
-              variant={status?.running ? "ghost" : "primary"}
+              variant={running ? "ghost" : "primary"}
+              loading={busy}
               onClick={async () => {
                 setBusy(true);
                 try {
-                  const next = status?.running ? await api.stopProxy() : await api.startProxy();
+                  const next = running ? await api.stopProxy() : await api.startProxy();
                   setStatus(next);
                   push({
-                    kind: next.running ? "ok" : "info",
-                    title: next.running ? "mihomo 已启动" : "mihomo 已停止",
+                    kind: isRunning(next) ? "ok" : "info",
+                    title: isRunning(next) ? "mihomo 已启动" : "mihomo 已停止",
                     detail: next.error || next.config,
                   });
                 } catch (err) {
@@ -392,9 +479,9 @@ export function NetworkView() {
                   setBusy(false);
                 }
               }}
-              disabled={busy || settings.proxy_mode !== "mihomo"}
+              disabled={settings.proxy_mode !== "mihomo"}
             >
-              {status?.running ? "停止" : "启动 mihomo"}
+              {running ? "停止" : "启动 mihomo"}
             </Button>
           </>
         }
@@ -402,8 +489,8 @@ export function NetworkView() {
         <div className="stack">
           <div className="row row--between">
             <span className="muted tiny">状态</span>
-            <Badge tone={status?.running ? "online" : status?.error ? "offline" : "idle"} dot pulse={status?.running}>
-              {status?.running ? "运行中" : status?.error ? status.error : "未运行"}
+            <Badge tone={running ? "online" : status?.error ? "offline" : "idle"} dot pulse={running}>
+              {running ? "运行中" : status?.error ? status.error : "未运行"}
             </Badge>
           </div>
           <div className="row row--between">

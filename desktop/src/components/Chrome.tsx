@@ -57,11 +57,11 @@ export function Rail({
 }: {
   view: ViewId;
   onChange: (next: ViewId) => void;
-  counts: { accounts: number; cards: number };
+  counts: { accounts: number; cards: number; online: number };
 }) {
   const { unlocked } = useSecretUnlock();
   return (
-    <nav className="rail">
+    <nav className="rail" aria-label="工作台">
       <div className="rail__group">
         <div className="rail__label">工作台</div>
         {NAV.filter((item) => item.id !== "logs" || unlocked).map((item) => (
@@ -69,6 +69,7 @@ export function Rail({
             key={item.id}
             className="rail__item"
             data-active={view === item.id}
+            aria-current={view === item.id ? "page" : undefined}
             onClick={() => onChange(item.id)}
             title={item.hint}
           >
@@ -81,6 +82,16 @@ export function Rail({
         ))}
       </div>
 
+      <div className="rail__foot">
+        <div className="rail__foot-row">
+          <span>会话在线</span>
+          <b>{counts.online}</b>
+        </div>
+        <div className="rail__foot-row">
+          <span>已绑卡</span>
+          <b>{counts.cards}</b>
+        </div>
+      </div>
     </nav>
   );
 }

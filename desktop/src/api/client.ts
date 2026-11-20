@@ -11,6 +11,8 @@ export interface Account {
   logged_in: boolean;
   last_login: string;
   has_password: boolean;
+  /** Stored password in the clear; the UI shows and edits it directly. */
+  password_plain: string;
   has_des: boolean;
   billing_checked: boolean;
   has_card: boolean;
@@ -49,6 +51,7 @@ export interface BillingInfo {
   postal_code: string;
   country_code: string;
   phone: string;
+  /** Apple only returns the last digits here, never the full PAN. */
   card_number: string;
   display_card_type: string;
 }
@@ -135,7 +138,8 @@ export interface ClashNode {
 
 export interface ProxyStatus {
   mode: string;
-  running: boolean;
+  /** The backend answers 0/1; read it through ``isRunning()``. */
+  running: boolean | 0 | 1;
   port: number;
   pid: number | null;
   config: string;
@@ -143,6 +147,8 @@ export interface ProxyStatus {
   error: string;
   alive?: boolean;
 }
+
+export const isRunning = (status: ProxyStatus | null): boolean => Boolean(status?.running);
 
 export interface BackendInfo {
   status: string;
@@ -159,6 +165,7 @@ export interface Health {
   curl_cffi: boolean;
   data_dir: string;
   clients: number;
+  fingerprint_pinned?: boolean;
   proxy: ProxyStatus;
 }
 
@@ -166,9 +173,23 @@ export interface EventEnvelope {
   event: string;
   payload: Record<string, unknown>;
   ts?: string;
+  /** Client-side sequence; the backend does not send one. */
+  id?: number;
+}
+
+export interface License {
+  licensed: boolean;
+  plan: string;
+  exp: number;
+  free_limit: number;
+  machine?: string;
 }
 
 const FALLBACK = "http://127.0.0.1:7911";
+const REQUEST_TIMEOUT = 20_000;
+const READ_TIMEOUT = 120_000;
+// A read may have to log in first, 2FA prompt included.
+const LOGIN_READ_TIMEOUT = 360_000;
 
 export class BackendError extends Error {
   status: number;
@@ -178,42 +199,49 @@ export class BackendError extends Error {
   }
 }
 
+/** Raised by the boot path; carries no HTTP semantics. */
+export class BootError extends Error {}
+
 export const isTauri = (): boolean =>
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
+export function normalizeBase(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
 /** Resolve the backend base URL once per session. */
-export async function resolveBaseUrl(): Promise<string> {
+export async function resolveBaseUrl(signal?: AbortSignal): Promise<string> {
   // Browser dev can pin a backend via ?api=http://127.0.0.1:PORT (handy for
   // screenshots and for talking to a non-default port outside the Tauri shell).
   if (typeof window !== "undefined") {
     const fromQuery = new URLSearchParams(window.location.search).get("api");
     if (fromQuery) {
-      window.localStorage.setItem("butter.api", fromQuery);
-      return fromQuery.replace(/\/$/, "");
+      // The shell picks a fresh port every boot, so a pinned URL is only
+      // remembered for the browser workflow that set it.
+      if (!isTauri()) window.localStorage.setItem("butter.api", fromQuery);
+      return normalizeBase(fromQuery);
     }
-    const fromStore = window.localStorage.getItem("butter.api");
-    if (fromStore && !isTauri()) return fromStore.replace(/\/$/, "");
+    const fromStore = !isTauri() ? window.localStorage.getItem("butter.api") : null;
+    if (fromStore) return normalizeBase(fromStore);
   }
   const envBase = import.meta.env.VITE_BUTTER_API as string | undefined;
-  if (envBase) return envBase.replace(/\/$/, "");
+  if (envBase) return normalizeBase(envBase);
   if (!isTauri()) return FALLBACK;
 
   for (let attempt = 0; attempt < 90; attempt += 1) {
+    if (signal?.aborted) throw new BootError("已取消");
     try {
       const info = await invoke<BackendInfo>("backend_info");
-      if (info.status === "ready" && info.baseUrl) return info.baseUrl;
+      if (info.status === "ready" && info.baseUrl) return normalizeBase(info.baseUrl);
       if (info.status === "failed") {
-        throw new BackendError(
-          `后端启动失败：${info.logTail.slice(-4).join(" ")}`,
-          0,
-        );
+        throw new BootError(`后端启动失败：${info.logTail.slice(-4).join(" ")}`);
       }
     } catch (err) {
-      if (err instanceof BackendError) throw err;
+      if (err instanceof BootError) throw err;
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new BackendError("后端未在 45 秒内就绪", 0);
+  throw new BootError("后端未在 45 秒内就绪");
 }
 
 export async function backendInfo(): Promise<BackendInfo | null> {
@@ -230,13 +258,70 @@ export async function restartBackend(): Promise<BackendInfo | null> {
   return invoke<BackendInfo>("backend_restart");
 }
 
+/** Remote activation endpoint; empty when the build has none. */
+export const ACTIVATION_URL = normalizeBase(
+  (import.meta.env.VITE_ACTIVATION_URL as string | undefined) ?? "",
+);
+
+export interface ActivationTicket {
+  payload: string;
+  sig: string;
+  checked: number;
+}
+
+export async function activate(
+  code: string,
+  machine: string,
+  signal?: AbortSignal,
+): Promise<ActivationTicket> {
+  if (!ACTIVATION_URL) throw new BackendError("尚未配置激活服务器", 0);
+  const res = await fetch(`${ACTIVATION_URL}/activate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ code, machine }),
+    signal: signal ?? AbortSignal.timeout(REQUEST_TIMEOUT),
+  });
+  const body = (await res.json().catch(() => ({}))) as Partial<ActivationTicket> & {
+    detail?: string;
+  };
+  if (!res.ok || !body.payload || !body.sig) {
+    throw new BackendError(body.detail ?? "激活码无效", res.status);
+  }
+  return {
+    payload: body.payload,
+    sig: body.sig,
+    checked: body.checked ?? Math.floor(Date.now() / 1000),
+  };
+}
+
+/**
+ * Hand the ticket to the shell for verification + persistence.
+ *
+ * Returns null outside Tauri: the browser preview can reach the server but has
+ * no licence store, and ``invoke`` throws a TypeError there.
+ */
+export async function applyLicense(ticket: ActivationTicket): Promise<License | null> {
+  if (!isTauri()) return null;
+  return invoke<License>("license_apply", {
+    payload: ticket.payload,
+    sig: ticket.sig,
+    checked: ticket.checked,
+  });
+}
+
 export class Api {
   constructor(private readonly base: string) {}
 
-  private async request<T>(path: string, init?: RequestInit): Promise<T> {
+  private async request<T>(path: string, init?: RequestInit & { timeout?: number }): Promise<T> {
+    const { timeout = REQUEST_TIMEOUT, ...rest } = init ?? {};
+    // Every call is bounded: without this a stalled backend let the 2.5s poll
+    // stack requests on top of each other until the socket pool was gone.
+    const timer = AbortSignal.timeout(timeout);
+    const signal = rest.signal ? AbortSignal.any([rest.signal, timer]) : timer;
     const res = await fetch(`${this.base}${path}`, {
-      ...init,
-      headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+      ...rest,
+      signal,
+      headers: { "content-type": "application/json", ...(rest.headers ?? {}) },
     });
     if (!res.ok) {
       let detail = res.statusText;
@@ -252,15 +337,19 @@ export class Api {
     return (await res.json()) as T;
   }
 
-  health = () => this.request<Health>("/api/health");
+  health = (signal?: AbortSignal) => this.request<Health>("/api/health", { signal });
 
-  listAccounts = () => this.request<Account[]>("/api/accounts");
+  listAccounts = (signal?: AbortSignal) =>
+    this.request<Account[]>("/api/accounts", { signal, timeout: 10_000 });
 
   createAccount = (payload: { email: string; password?: string; note?: string }) =>
     this.request<Account>("/api/accounts", { method: "POST", body: JSON.stringify(payload) });
 
-  updateAccount = (email: string, payload: { password?: string; note?: string }) =>
-    this.request<Account>(`/api/accounts/${encodeURIComponent(email)}`, {
+  updateAccount = (
+    key: string,
+    payload: { email?: string; password?: string; note?: string },
+  ) =>
+    this.request<Account>(`/api/accounts/${encodeURIComponent(key)}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     });
@@ -283,10 +372,10 @@ export class Api {
     persist?: boolean;
     code_url?: string;
   }) =>
-    this.request<{ ok: boolean; message: string; account: Account }>("/api/accounts/login", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    this.request<{ ok: boolean; message: string; account: Account }>(
+      "/api/accounts/login",
+      { method: "POST", body: JSON.stringify(payload), timeout: READ_TIMEOUT },
+    );
 
   cancelCheck = () =>
     this.request<{ ok: boolean; message?: string }>("/api/sessions/check/cancel", {
@@ -299,16 +388,24 @@ export class Api {
       { method: "POST" },
     );
 
+  logout = (email: string) =>
+    this.request<{ ok: boolean; status?: string; message?: string }>(
+      `/api/accounts/${encodeURIComponent(email)}/logout`,
+      { method: "POST" },
+    );
+
   submitHsa2 = (email: string, code: string) =>
     this.request<{ accepted: boolean }>(`/api/accounts/${encodeURIComponent(email)}/hsa2`, {
       method: "POST",
       body: JSON.stringify({ code }),
+      timeout: 30_000,
     });
 
   bulkImport = (text: string) =>
     this.request<BulkResult>("/api/accounts/bulk", {
       method: "POST",
       body: JSON.stringify({ text }),
+      timeout: READ_TIMEOUT,
     });
 
   batchRelogin = (emails?: string[]) =>
@@ -317,41 +414,44 @@ export class Api {
       body: JSON.stringify({ emails: emails ?? null }),
     });
 
-  getBilling = (email: string) =>
+  getBilling = (email: string, signal?: AbortSignal) =>
     this.request<BillingResult & { account?: Account; session_expired?: boolean }>(
       `/api/accounts/${encodeURIComponent(email)}/billing`,
+      { signal, timeout: LOGIN_READ_TIMEOUT },
     );
 
   putBilling = (email: string, form: BillingForm) =>
     this.request<BillingResult>(
       `/api/accounts/${encodeURIComponent(email)}/billing`,
-      { method: "PUT", body: JSON.stringify(form) },
+      { method: "PUT", body: JSON.stringify(form), timeout: LOGIN_READ_TIMEOUT },
     );
 
   deleteBilling = (email: string) =>
     this.request<BillingResult>(`/api/accounts/${encodeURIComponent(email)}/billing`, {
       method: "DELETE",
+      timeout: READ_TIMEOUT,
     });
 
   checkSessions = (emails?: string[]) =>
     this.request<{ ok: boolean; results: Array<{ email: string; ok: boolean; status: string }> }>(
       "/api/sessions/check",
-      { method: "POST", body: JSON.stringify({ emails: emails ?? null }) },
+      { method: "POST", body: JSON.stringify({ emails: emails ?? null }), timeout: READ_TIMEOUT },
     );
 
   checkSession = (email: string) =>
     this.request<{ ok: boolean; status: string; message?: string }>(
       `/api/accounts/${encodeURIComponent(email)}/session`,
-      { method: "POST" },
+      { method: "POST", timeout: READ_TIMEOUT },
     );
 
-  parsePaste = (text: string) =>
+  parsePaste = (text: string, signal?: AbortSignal) =>
     this.request<{ fields: Record<string, string>; count: number }>("/api/paste", {
       method: "POST",
       body: JSON.stringify({ text }),
+      signal,
     });
 
-  clashStatus = () => this.request<ClashStatus>("/api/clash/status");
+  clashStatus = () => this.request<ClashStatus>("/api/clash/status", { timeout: 10_000 });
 
   clashNodes = (keyword = "", limit = 400) =>
     this.request<{ ok: boolean; nodes: ClashLiveNode[] }>(
@@ -368,23 +468,24 @@ export class Api {
     this.request<{ ok: boolean; group: string; now: string; total: number }>("/api/clash/rotate", {
       method: "POST",
       body: JSON.stringify({ keyword, stride, group: group ?? "" }),
+      timeout: 30_000,
     });
 
-  license = () =>
-    this.request<{ licensed: boolean; plan: string; exp: number; free_limit: number }>(
-      "/api/license",
-    );
+  license = () => this.request<License>("/api/license");
 
   version = () => this.request<{ version: string }>("/api/version");
 
-  getSettings = () => this.request<Settings>("/api/settings");
+  getSettings = (signal?: AbortSignal) => this.request<Settings>("/api/settings", { signal });
 
   saveSettings = (patch: Partial<Settings>) =>
-    this.request<{ ok: boolean }>("/api/settings", { method: "PUT", body: JSON.stringify(patch) });
+    this.request<{ ok: boolean }>("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    });
 
   previewProfile = () => this.request<Record<string, unknown>>("/api/proxy/preview");
 
-  startProxy = () => this.request<ProxyStatus>("/api/proxy/start", { method: "POST" });
+  startProxy = () => this.request<ProxyStatus>("/api/proxy/start", { method: "POST", timeout: 60_000 });
 
   stopProxy = () => this.request<ProxyStatus>("/api/proxy/stop", { method: "POST" });
 

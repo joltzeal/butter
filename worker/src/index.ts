@@ -240,18 +240,38 @@ async function adminCodes(request: Request, env: Env) {
   return json({ imported: rows.length });
 }
 
+/** The desktop renderer is a different origin; without this every call fails
+ *  in the webview as "Failed to fetch" before the request is even sent. */
+const CORS_HEADERS: Record<string, string> = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers": "content-type, x-payload, x-sig",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-max-age": "86400",
+};
+
+function withCors(res: Response): Response {
+  const out = new Response(res.body, res);
+  for (const [key, value] of Object.entries(CORS_HEADERS)) out.headers.set(key, value);
+  return out;
+}
+
 export default {
   async fetch(request: Request, env: Env) {
     const url = new URL(request.url);
-    if (request.method === "GET" && url.pathname === "/health") return json({ ok: true });
+    if (request.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));
     try {
-      if (request.method === "POST" && url.pathname === "/activate") return await activate(request, env);
-      if (request.method === "POST" && url.pathname === "/renew") return await renew(request, env);
-      if (request.method === "GET" && url.pathname === "/params") return await params(request, env);
-      if (request.method === "POST" && url.pathname === "/admin/codes") return await adminCodes(request, env);
-      return json({ detail: "not found" }, 404);
+      if (request.method === "GET" && url.pathname === "/health") return withCors(json({ ok: true }));
+      if (request.method === "POST" && url.pathname === "/activate")
+        return withCors(await activate(request, env));
+      if (request.method === "POST" && url.pathname === "/renew")
+        return withCors(await renew(request, env));
+      if (request.method === "GET" && url.pathname === "/params")
+        return withCors(await params(request, env));
+      if (request.method === "POST" && url.pathname === "/admin/codes")
+        return withCors(await adminCodes(request, env));
+      return withCors(json({ detail: "not found" }, 404));
     } catch (err) {
-      return json({ detail: String(err) }, 500);
+      return withCors(json({ detail: String(err) }, 500));
     }
   },
 };

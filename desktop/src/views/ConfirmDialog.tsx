@@ -1,5 +1,7 @@
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
+import { useState } from "react";
 import { Button } from "../components/ui";
+import { Dialog } from "../components/Dialog";
 
 export function ConfirmDialog({
   open,
@@ -13,34 +15,43 @@ export function ConfirmDialog({
   title: string;
   description: string;
   confirmLabel?: string;
-  onConfirm: () => void | Promise<void>;
+  /** Resolve `true` to close; `false` keeps the dialog open after a failure. */
+  onConfirm: () => boolean | Promise<boolean>;
   onCancel: () => void;
 }) {
-  if (!open) return null;
+  const [busy, setBusy] = useState(false);
+
+  const confirm = async () => {
+    setBusy(true);
+    try {
+      if ((await onConfirm()) !== false) onCancel();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <div className="modal-backdrop" onMouseDown={onCancel}>
-      <div className="modal modal--sm" onMouseDown={(event) => event.stopPropagation()}>
-        <header className="modal__head">
-          <AlertTriangle style={{ width: 16, color: "var(--danger)" }} />
-          <h2>{title}</h2>
-          <button className="modal__close" onClick={onCancel}>
-            <X />
-          </button>
-        </header>
-        <div className="modal__body">
-          <p className="muted" style={{ fontSize: 12.5 }}>
-            {description}
-          </p>
-        </div>
-        <footer className="modal__foot">
-          <Button variant="ghost" onClick={onCancel}>
+    <Dialog
+      open={open}
+      onClose={onCancel}
+      title={title}
+      icon={AlertTriangle}
+      busy={busy}
+      onSubmit={confirm}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>
             取消
           </Button>
-          <Button variant="danger" onClick={() => void onConfirm()}>
-            {confirmLabel}
+          <Button variant="danger" type="submit" loading={busy}>
+            {busy ? "处理中…" : confirmLabel}
           </Button>
-        </footer>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.7 }}>
+        {description}
+      </p>
+    </Dialog>
   );
 }

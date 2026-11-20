@@ -9,6 +9,7 @@ import "./styles/billing.css";
 import "./styles/workspace.css";
 import "./styles/views.css";
 import "./styles/fixes.css";
+import "./styles/dialog-fixes.css";
 
 const theme = localStorage.getItem("butter.theme") ?? "dark";
 document.documentElement.dataset.theme = theme;

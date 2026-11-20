@@ -1,13 +1,21 @@
-.toasts {
-  /* Bottom-left: the action bar lives bottom-right and the toasts covered it. */
+/* One column for every overlay message. Toasts used to sit bottom-left and the
+   job cards bottom-right, which read as two unrelated notification systems. */
+.overlay-stack {
   position: fixed;
   left: 18px;
-  bottom: 18px;
+  bottom: 72px;
   z-index: 90;
+  width: 340px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 340px;
+  pointer-events: none;
+}
+
+.toasts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   pointer-events: none;
 }
 
@@ -87,11 +95,14 @@
 
 
 /* Long-running job indicator (login / relogin / bulk import) ------------ */
+.jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
 .job-indicator {
-  position: fixed;
-  left: 18px;
-  bottom: 18px;
-  z-index: 60;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -103,6 +114,23 @@
   backdrop-filter: blur(14px) saturate(1.1);
   color: var(--amber);
   animation: job-in 0.18s ease-out;
+  pointer-events: auto;
+  width: 100%;
+}
+
+.job-indicator__cancel {
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--line-strong);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.job-indicator__cancel:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
 }
 
 .job-indicator__close {
@@ -159,4 +187,19 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.toast__action {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.toast__action:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
 }
