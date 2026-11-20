@@ -9,7 +9,7 @@
 | variable | `BUTTER_ACTIVATION_URL` | 构建期注入激活服务 | 已配 |
 | secret | `TAURI_SIGNING_PRIVATE_KEY` | 给 updater 产物签名 | 已配 |
 | secret | `UPDATE_TOKEN` | 私有仓库的 release 资产需要读权限，构建期烘进 `VITE_UPDATE_TOKEN` | 已配（用的是 `gh` 的 OAuth token，会随登录失效，建议换长期 PAT） |
-| secret | `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_SIGNING_IDENTITY` | Developer ID Application 证书（base64 p12） | 未配 → 现在产出的是未签名 app |
+| secret | `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_SIGNING_IDENTITY` | Developer ID Application 证书（base64 p12） | 未配；workflow 里这六个 env 是注释掉的——空值也会被 bundler 当成"有证书"，然后在空 p12 上失败。配好 secret 后把注释取消 |
 | secret | `APPLE_ID` / `APPLE_APP_PASSWORD` / `APPLE_TEAM_ID` | 公证 | 未配 |
 | secret | Windows 代码签名 | NSIS 的 Authenticode（PFX + thumbprint，或 Azure Trusted Signing） | 未配 → SmartScreen 会拦 |
 
