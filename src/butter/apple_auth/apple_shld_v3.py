@@ -162,8 +162,11 @@ def get_jr(session=None) -> str:
     """
     实测 /shop/shld/work/v3/q 只接受 jr=30（29/31/s3/空 都 404）。
     shld_bt_m 的第一段是另一个签名值，不能当 jr 用。
+    下发的值优先，便于服务端调整而不必发版。
     """
-    return "30"
+    from ..core import protocol_params
+
+    return str(protocol_params.get("jr") or "30")
 
 
 def run_shld(session, base: str, ssi: str, jr: str | None = None,

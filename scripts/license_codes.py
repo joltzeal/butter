@@ -51,7 +51,13 @@ def push(url: str, secret: str, codes: list[dict]) -> dict:
         f"{url.rstrip('/')}/admin/codes",
         data=body,
         method="POST",
-        headers={"content-type": "application/json", "x-stamp": stamp, "x-sign": mac},
+        headers={
+            "content-type": "application/json",
+            # Cloudflare's bot rules reject the stock urllib agent.
+            "user-agent": "butter-license/1 (+cli)",
+            "x-stamp": stamp,
+            "x-sign": mac,
+        },
     )
     with urllib.request.urlopen(req, timeout=30) as res:
         return json.loads(res.read())
@@ -74,6 +80,8 @@ def main() -> int:
         if not url or not secret:
             raise SystemExit("需要 BUTTER_ADMIN_URL 和 BUTTER_ADMIN_SECRET")
         codes = json.loads(pathlib.Path(args.push or args.out).read_text(encoding="utf-8"))
+        if isinstance(codes, dict):
+            codes = codes.get("codes", [])
         print(push(url, secret, codes))
         return 0
 

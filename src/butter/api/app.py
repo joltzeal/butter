@@ -148,6 +148,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         format="[%(asctime)s] [%(levelname)s] %(name)s: %(message)s",
     )
     state = AppState()
+    # Refresh protocol overrides in the background; the compiled defaults stay
+    # in use until (and unless) a verified bundle lands.
+    import asyncio as _asyncio
+
+    from ..core import protocol_params as _pp
+
+    _asyncio.get_running_loop().run_in_executor(None, _pp.refresh)
     state.services.start_poll()
     LOGGER.info("butter backend ready | data=%s curl_cffi=%s", data_dir(), HAS_CURL_CFFI)
     try:

@@ -14,6 +14,13 @@
 
 const enc = new TextEncoder();
 
+/** Master public key; the client verifies both licences and param bundles. */
+const PUBLIC_KEY_SPKI = "MCowBQYDK2VwAyEAf7gPauvZ5_MuVt2jFKwRaI4qFEB6kphICxOD5reijIY";
+
+// 1024-bit group Apple's SRP variant uses, and its k = H(N) XOR H(pad(g)).
+import { SRP_N_HEX } from "./params";
+const SRP_K_HEX = "05b9e8ef059c6b32ea59fc1d322d37f04aa30bae5aa9003b8321e21ddb04e300";
+
 interface Env {
   DB: D1Database;
   /** base64url raw Ed25519 private key (32 bytes). */
@@ -35,9 +42,19 @@ function b64urlDecode(text: string): Uint8Array {
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 }
 
+/** Ed25519 keys need an explicit DER container; raw bytes are ambiguous. */
 async function importKey(secret: string) {
-  const raw = b64urlDecode(secret);
-  return crypto.subtle.importKey("raw", raw, { name: "Ed25519" }, false, ["sign"]);
+  return crypto.subtle.importKey("pkcs8", b64urlDecode(secret), { name: "Ed25519" }, false, ["sign"]);
+}
+
+async function verifyKey() {
+  return crypto.subtle.importKey(
+    "spki",
+    b64urlDecode(PUBLIC_KEY_SPKI),
+    { name: "Ed25519" },
+    false,
+    ["verify"],
+  );
 }
 
 interface Payload {
@@ -137,6 +154,42 @@ async function activate(request: Request, env: Env) {
   return json({ ...token, checked: now, exp: current.exp, days_left: Math.ceil((current.exp - now) / 86400) });
 }
 
+/**
+ * Protocol constants. The client can be decompiled; these cannot.
+ * Request must carry a currently-valid licence in `x-payload` / `x-sig`.
+ */
+async function params(request: Request, env: Env) {
+  const payload = request.headers.get("x-payload") ?? "";
+  const sig = request.headers.get("x-sig") ?? "";
+  if (!payload || !sig) return json({ detail: "缺少许可证" }, 401);
+
+  const body = b64urlDecode(payload);
+  const key = await verifyKey();
+  const ok = await crypto.subtle.verify(
+    { name: "Ed25519" },
+    key,
+    b64urlDecode(sig),
+    body,
+  );
+  if (!ok) return json({ detail: "许可证无效" }, 401);
+
+  const claims = JSON.parse(new TextDecoder().decode(body)) as { machine: string; exp: number };
+  if (claims.exp <= Math.floor(Date.now() / 1000)) return json({ detail: "许可证已过期" }, 401);
+  if (claims.machine !== request.headers.get("x-machine")) return json({ detail: "机器不匹配" }, 401);
+
+  const bundle = {
+    n_hex: SRP_N_HEX,
+    k_hex: SRP_K_HEX,
+    jr: "30",
+    domain_id: "39",
+    ver: 3,
+  };
+  const raw = enc.encode(JSON.stringify(bundle));
+  const signingKey = await importKey(env.SIGNING_KEY);
+  const out = await crypto.subtle.sign({ name: "Ed25519" }, signingKey, raw);
+  return json({ payload: b64url(raw), sig: b64url(new Uint8Array(out)) });
+}
+
 async function renew(request: Request, env: Env) {
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const machine = sanitize(body.machine, 32);
@@ -194,6 +247,7 @@ export default {
     try {
       if (request.method === "POST" && url.pathname === "/activate") return await activate(request, env);
       if (request.method === "POST" && url.pathname === "/renew") return await renew(request, env);
+      if (request.method === "GET" && url.pathname === "/params") return await params(request, env);
       if (request.method === "POST" && url.pathname === "/admin/codes") return await adminCodes(request, env);
       return json({ detail: "not found" }, 404);
     } catch (err) {

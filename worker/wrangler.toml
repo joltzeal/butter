@@ -8,5 +8,5 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "butter-activation"
-# Fill after `wrangler d1 create butter-activation`.
-database_id = "REPLACE_WITH_D1_ID"
+# Created with `wrangler d1 create butter-activation`.
+database_id = "187d4ee0-ada8-4560-ab78-80fe60b623dd"

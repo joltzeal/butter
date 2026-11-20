@@ -82,6 +82,18 @@ SRP_N_HEX = (
     "94B5C803D89F7AE435DE236D525F54759B65E372FCD68EF20FA7111F9E4AFF73"
 )
 SRP_N = int(SRP_N_HEX, 16)
+
+
+def _params():
+    """Lazy: importing ``butter.core`` here at module level is circular."""
+    from ..core import protocol_params
+
+    return protocol_params
+
+
+def srp_n() -> int:
+    """Group order, overridable by the activation bundle."""
+    return int(_params().srp_n_hex(SRP_N_HEX), 16)
 SRP_k_HEX = "05b9e8ef059c6b32ea59fc1d322d37f04aa30bae5aa9003b8321e21ddb04e300"
 
 
@@ -122,9 +134,10 @@ def srp_proofs(username: str, password: str, salt_b64: str, iterations: int,
     than the RFC's ``H(N | pad(g))``, and ``u`` hashes the *unpadded* A and B.
     Both details are load-bearing — the server answers -20101 otherwise.
     """
+    n = srp_n()
     salt = base64.b64decode(salt_b64)
     b_bytes = base64.b64decode(server_B_b64)
-    A_int = pow(2, a_int, SRP_N)
+    A_int = pow(2, a_int, n)
     A_bytes = _i2b(A_int)
 
     p0 = _sha256(password.encode("utf-8"))
@@ -138,10 +151,10 @@ def srp_proofs(username: str, password: str, salt_b64: str, iterations: int,
     k = int(SRP_k_HEX, 16)
     B = int.from_bytes(b_bytes, "big")
     u = int.from_bytes(_sha256(A_bytes, b_bytes), "big")
-    S = pow((B - k * pow(2, x, SRP_N)) % SRP_N, a_int + u * x, SRP_N)
+    S = pow((B - k * pow(2, x, n)) % n, a_int + u * x, n)
     K = _sha256(_i2b(S))
 
-    hN_xor_hg = bytes(a ^ b for a, b in zip(_sha256(_i2b(SRP_N)), _sha256(_i2b(2))))
+    hN_xor_hg = bytes(a ^ b for a, b in zip(_sha256(_i2b(n)), _sha256(_i2b(2))))
     M1 = _sha256(hN_xor_hg, _sha256(username.lower().encode()), salt, A_bytes, b_bytes, K)
     M2 = _sha256(A_bytes, M1, K)
     return base64.b64encode(M1).decode(), base64.b64encode(M2).decode()
@@ -239,7 +252,7 @@ class IdmsaClient:
             "Sec-Fetch-Site": "same-origin",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Dest": "empty",
-            "X-Apple-Domain-Id": self.state.domain_id or DOMAIN_ID,
+            "X-Apple-Domain-Id": self.state.domain_id or _params().get("domain_id") or DOMAIN_ID,
             "X-Apple-Widget-Key": self.widget_key,
             "X-Apple-OAuth-Client-Id": self.widget_key,
             "X-Apple-OAuth-Client-Type": "firstPartyAuth",
@@ -349,7 +362,7 @@ class IdmsaClient:
         self.state.absorb(r, "step0")
         # 注意：authorize 页里的 domainId(如 35) 不能用于请求头，
         # 实测它只影响页面资源版本；请求头必须用 39（exe get_idmsa_headers 里也是写死）
-        self.state.domain_id = DOMAIN_ID
+        self.state.domain_id = str(_params().get("domain_id") or DOMAIN_ID)
         self._log(f"[idmsa] domainId={self.state.domain_id} (redirect={self.redirect_uri})")
         # 正则取 sessionId
         m = re.search(r'"sessionId"\s*:\s*"([^"]+)"', r.text or "")
@@ -406,7 +419,7 @@ class IdmsaClient:
     def step2_signin_init(self, email: str, password: str | None = None):
         a_bytes = secrets.token_bytes(256)
         a_int = int.from_bytes(a_bytes, "big")
-        A_int = pow(2, a_int, SRP_N)
+        A_int = pow(2, a_int, srp_n())
         a_b64 = base64.b64encode(_i2b(A_int)).decode()
         self._srp_a_int = a_int
         self._srp_a_b64 = a_b64
@@ -422,7 +435,7 @@ class IdmsaClient:
                 time.sleep(1.0 + i)
                 a_bytes = secrets.token_bytes(256)
                 self._srp_a_int = int.from_bytes(a_bytes, "big")
-                a_b64 = base64.b64encode(_i2b(pow(2, self._srp_a_int, SRP_N))).decode()
+                a_b64 = base64.b64encode(_i2b(pow(2, self._srp_a_int, srp_n()))).decode()
                 self._srp_a_b64 = a_b64
                 payload = {"a": a_b64, "accountName": email,
                            "protocols": ["s2k", "s2k_fo"]}
@@ -453,7 +466,7 @@ class IdmsaClient:
         salt = base64.b64decode(salt_b64)
         b_bytes = base64.b64decode(server_B_b64)
         a_int = self._srp_a_int
-        A_int = pow(2, a_int, SRP_N)
+        A_int = pow(2, a_int, srp_n())
         A_bytes = _i2b(A_int)
 
         p0 = _sha256(password.encode("utf-8"))
@@ -467,10 +480,10 @@ class IdmsaClient:
         k = int(SRP_k_HEX, 16)
         B = int.from_bytes(b_bytes, "big")
         u = int.from_bytes(_sha256(A_bytes, b_bytes), "big")
-        S = pow((B - k * pow(2, x, SRP_N)) % SRP_N, a_int + u * x, SRP_N)
+        S = pow((B - k * pow(2, x, n)) % n, a_int + u * x, n)
         K = _sha256(_i2b(S))
 
-        hN_xor_hg = bytes(a ^ b for a, b in zip(_sha256(_i2b(SRP_N)), _sha256(_i2b(2))))
+        hN_xor_hg = bytes(a ^ b for a, b in zip(_sha256(_i2b(n)), _sha256(_i2b(2))))
         M1 = _sha256(hN_xor_hg, _sha256(username.lower().encode()), salt, A_bytes, b_bytes, K)
         M2 = _sha256(A_bytes, M1, K)
         return base64.b64encode(M1).decode(), base64.b64encode(M2).decode()

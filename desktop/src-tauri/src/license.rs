@@ -243,6 +243,20 @@ pub fn spawn_renewer(app: AppHandle) {
     });
 }
 
+/// Licence payload/signature as env pairs, for the sidecar's param fetch.
+pub fn fields(app: &AppHandle) -> Vec<(String, String)> {
+    let Ok(raw) = std::fs::read_to_string(licence_path(app).unwrap_or_default()) else {
+        return Vec::new();
+    };
+    let Ok(licence) = serde_json::from_str::<Licence>(&raw) else {
+        return Vec::new();
+    };
+    vec![
+        ("BUTTER_LICENSE_PAYLOAD".into(), licence.payload),
+        ("BUTTER_LICENSE_SIG".into(), licence.sig),
+    ]
+}
+
 pub fn mark_checked(app: &AppHandle) {
     let Ok(path) = licence_path(app) else { return };
     let Ok(raw) = std::fs::read_to_string(&path) else { return };

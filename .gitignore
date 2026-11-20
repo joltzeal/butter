@@ -61,3 +61,7 @@ data/
 *.exe
 !butter-backend.exe.placeholder
 scripts/license_key.pem
+worker/node_modules/
+worker/.wrangler/
+codes.json
+license.json
