@@ -193,4 +193,3 @@ jobs:
             desktop/src-tauri/target/**/release/bundle/macos/*.app.tar.gz
           if-no-files-found: warn
           retention-days: 30
-
