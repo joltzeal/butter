@@ -5,19 +5,19 @@
   "platforms": {
     "windows-x86_64": {
       "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUWDYwbTdhNHp6ZEpLODhxcDR2dFQ0VWRBcXV0Znpidzk4NHNtRDFQQ05hZjVZb3FoQXFmaVRLcVpHRXBybzAyQXh4Vi8wdFVCY2VsZUJNaWpOdjIyUUdyS1AraG04UWdnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MjA5NTQ0CWZpbGU6QnV0dGVyXzAuMS4yM194NjQtc2V0dXAuZXhlCXZlcnNpb246MC4xLjIzClQzVlB0YzBjTEtaUXZDNnpyZVlYaTVaRWtyK0owbkV5ZVJQd2x2M3hPU2tLLzhCU3pUT1NPYTBQaFFMVHNXQmhhNi9pK0tDN09NQzh6V0g4dkdSSUN3PT0K",
-      "url": "https://github.com/joltzeal/butter/releases/download/v0.1.23/Butter_0.1.23_x64-setup.exe"
+      "url": "https://api.github.com/repos/joltzeal/butter/releases/assets/773379598"
     },
     "windows-x86_64-nsis": {
       "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUWDYwbTdhNHp6ZEpLODhxcDR2dFQ0VWRBcXV0Znpidzk4NHNtRDFQQ05hZjVZb3FoQXFmaVRLcVpHRXBybzAyQXh4Vi8wdFVCY2VsZUJNaWpOdjIyUUdyS1AraG04UWdnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MjA5NTQ0CWZpbGU6QnV0dGVyXzAuMS4yM194NjQtc2V0dXAuZXhlCXZlcnNpb246MC4xLjIzClQzVlB0YzBjTEtaUXZDNnpyZVlYaTVaRWtyK0owbkV5ZVJQd2x2M3hPU2tLLzhCU3pUT1NPYTBQaFFMVHNXQmhhNi9pK0tDN09NQzh6V0g4dkdSSUN3PT0K",
-      "url": "https://github.com/joltzeal/butter/releases/download/v0.1.23/Butter_0.1.23_x64-setup.exe"
+      "url": "https://api.github.com/repos/joltzeal/butter/releases/assets/773379598"
     },
     "darwin-aarch64": {
       "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUWDYwbTdhNHp6ZE1GT3BhclNYYWsyL2Zwa1hlbWN4WHdtSkw2U3pqdGRLektBNWswTFg2NnRNNnZIZUUzRk5ueTRqdzB3cWs4Z083cGVmNmpvU0N2bXZ5Yjh3MWNXSHdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MjA5NzI3CWZpbGU6QnV0dGVyLmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuMjMKZTNJd0VEQ3pQa0ZOTHJOc29vK0VaK3NHNXEzc0JEMmJ3QjExR05jamZwTjJadzBuY1UrV1NQdlBPZk9aRjU4Zk14anVqb2lsQ0lqVmd2VGtPT3VBQmc9PQo=",
-      "url": "https://github.com/joltzeal/butter/releases/download/v0.1.23/Butter_aarch64.app.tar.gz"
+      "url": "https://api.github.com/repos/joltzeal/butter/releases/assets/773388109"
     },
     "darwin-aarch64-app": {
       "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUWDYwbTdhNHp6ZE1GT3BhclNYYWsyL2Zwa1hlbWN4WHdtSkw2U3pqdGRLektBNWswTFg2NnRNNnZIZUUzRk5ueTRqdzB3cWs4Z083cGVmNmpvU0N2bXZ5Yjh3MWNXSHdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MjA5NzI3CWZpbGU6QnV0dGVyLmFwcC50YXIuZ3oJdmVyc2lvbjowLjEuMjMKZTNJd0VEQ3pQa0ZOTHJOc29vK0VaK3NHNXEzc0JEMmJ3QjExR05jamZwTjJadzBuY1UrV1NQdlBPZk9aRjU4Zk14anVqb2lsQ0lqVmd2VGtPT3VBQmc9PQo=",
-      "url": "https://github.com/joltzeal/butter/releases/download/v0.1.23/Butter_aarch64.app.tar.gz"
+      "url": "https://api.github.com/repos/joltzeal/butter/releases/assets/773388109"
     }
   }
 }
