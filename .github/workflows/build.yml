@@ -146,9 +146,16 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e . "pyinstaller>=6.10"
 
-      - name: Build backend sidecar
-        shell: ${{ matrix.label == 'windows' && 'pwsh' || 'bash' }}
-        run: ./scripts/build_sidecar.${{ matrix.label == 'windows' && 'ps1' || 'sh' }}
+      # `shell` does not accept an expression here, so the two platforms get
+      # their own literal step.
+      - name: Build backend sidecar (windows)
+        if: matrix.label == 'windows'
+        shell: pwsh
+        run: ./scripts/build_sidecar.ps1
+
+      - name: Build backend sidecar (macos)
+        if: matrix.label != 'windows'
+        run: ./scripts/build_sidecar.sh
 
       - name: Install frontend deps
         working-directory: desktop
