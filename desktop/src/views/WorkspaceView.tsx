@@ -111,6 +111,7 @@ export function WorkspaceView() {
   const [form, setForm] = useState<BillingForm>({ ...EMPTY });
   const [info, setInfo] = useState<BillingInfo | null>(null);
   const [reveal, setReveal] = useState(false);
+  const [notice, setNotice] = useState("");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -129,9 +130,16 @@ export function WorkspaceView() {
   // a button and no request is made until it is pressed.
   // No cache painting: selecting an account always shows the veil until a real
   // read lands, so what is on screen is exactly what the server answered.
+  // Selecting an account loads it: the pane has no cache to paint, so the whole
+  // point of the click is the data. Offline accounts are logged in first by the
+  // backend; a 2FA stop raises the dialog like any other login.
   useEffect(() => {
     setInfo(null);
     setForm({ ...EMPTY });
+    setNotice("");
+    if (!selected) return;
+    void load(selected);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
   useEffect(() => {
@@ -177,11 +185,17 @@ export function WorkspaceView() {
       return next;
     });
 
-  async function load() {
-    if (!selected) return;
+  async function load(target?: string) {
+    const email = target ?? selected;
+    if (!email) return;
     try {
-      const result = await actions.fetchBilling.mutateAsync(selected);
+      const result = await actions.fetchBilling.mutateAsync(email);
+      if (result.awaiting_hsa2) {
+        setNotice(result.message ?? "正在登录，等待验证码");
+        return;
+      }
       if (result.ok && result.info) {
+        setNotice("");
         setInfo(result.info);
         setForm(toForm(result.info));
       }
@@ -361,8 +375,10 @@ export function WorkspaceView() {
               {!info && !pending ? (
                 <div className="peek__veil">
                   <ShieldOff style={{ width: 20, color: "var(--amber)" }} />
-                  <strong>还没有读取账单</strong>
-                  <span>点击下方按钮从 Apple 获取这个账号的账单</span>
+                  <strong>{notice || "还没有读取账单"}</strong>
+                  <span>
+                    {notice ? "验证码输入后会自动继续" : "点击下方按钮从 Apple 获取这个账号的账单"}
+                  </span>
                   <Button icon={RefreshCw} variant="primary" onClick={() => void load()}>
                     获取账单信息
                   </Button>

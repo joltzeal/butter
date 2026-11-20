@@ -333,6 +333,14 @@ class Services:
         if account is None:
             return {"ok": False, "message": "账号不存在"}
 
+        # Offline accounts are logged in first: the operator asked for the form,
+        # not for a status report. A login that stops on 2FA leaves the request
+        # here; submitting the code finishes the login, which reads the billing
+        # itself once its store handshake is done.
+        ensured = await self._ensure_session(account)
+        if ensured is not None:
+            return ensured
+
         async with self._lock(email):
             client, owns = self._billing_client(account)
             try:
@@ -702,6 +710,29 @@ class Services:
         self._emit("billing.updated", email=account.email, removed=expected_card is None)
         return {"ok": True, "message": success, "info": info,
                 "account": account.public()}
+
+    async def _ensure_session(self, account: Account) -> dict[str, Any] | None:
+        """Make sure the account can answer, else start a login and say so.
+
+        The login is *spawned*, not awaited: a 2FA stop would otherwise hold the
+        HTTP request for minutes. Once the code is submitted the login finishes
+        and reads the billing itself.
+        """
+
+        def alive() -> bool:
+            client = self.sessions.live_client(account.email)
+            return bool(client and client.alive_payload())
+
+        if await asyncio.to_thread(alive):
+            return None
+        if self._is_busy(account.email):
+            return {"ok": False, "awaiting_hsa2": True, "message": "正在登录，等待验证码"}
+        if not account.password:
+            return {"ok": False, "message": "会话已失效，且没有保存密码，请先重登"}
+
+        self._emit("billing.progress", email=account.email, stage="login")
+        asyncio.get_running_loop().create_task(self.login(LoginRequest(email=account.email)))
+        return {"ok": False, "awaiting_hsa2": True, "message": "会话已失效，正在重新登录"}
 
     # --- session health ---------------------------------------------------
     async def check_session(self, email: str) -> dict[str, Any]:

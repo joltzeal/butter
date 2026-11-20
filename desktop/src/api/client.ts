@@ -58,6 +58,8 @@ export interface BillingResult {
   ok: boolean;
   message?: string;
   info?: BillingInfo | null;
+  /** The read parked on a 2FA code; the dialog takes over. */
+  awaiting_hsa2?: boolean;
 }
 
 export interface BillingForm {
@@ -316,7 +318,7 @@ export class Api {
     });
 
   getBilling = (email: string) =>
-    this.request<{ ok: boolean; info?: BillingInfo; account?: Account; message?: string; session_expired?: boolean }>(
+    this.request<BillingResult & { account?: Account; session_expired?: boolean }>(
       `/api/accounts/${encodeURIComponent(email)}/billing`,
     );
 

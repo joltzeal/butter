@@ -131,6 +131,9 @@ export function useAccountActions() {
     onSuccess: (result) => {
       invalidate();
       if (!result.ok) {
+        // A 2FA stop is expected on a stale account, and the dialog already
+        // says so — only real failures get a toast.
+        if (result.awaiting_hsa2) return;
         push({ kind: "error", title: "读取账单失败", detail: result.message });
         return;
       }
