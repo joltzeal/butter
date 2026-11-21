@@ -54,8 +54,13 @@ cleanup() {
   rc=$?
   if [[ $FLIPPED == 1 && "${KEEP_VISIBILITY:-0}" != 1 && -n "$REPO" ]]; then
     step "restoring repository visibility: private"
-    gh repo edit "$REPO" --visibility private --accept-visibility-change-consequences \
-      || warn "could not set the repo private again — do it by hand"
+    # GitHub queues visibility changes; flipping back right after a flip answers
+    # 422 "previous visibility change is still in progress" for a while.
+    for attempt in 1 2 3 4 5 6; do
+      gh repo edit "$REPO" --visibility private --accept-visibility-change-consequences && break
+      (( attempt == 6 )) && warn "could not set the repo private again — do it by hand"
+      sleep $(( attempt * 10 ))
+    done
   fi
   rm -rf "$WORK"
   exit $rc
