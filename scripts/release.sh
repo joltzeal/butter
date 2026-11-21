@@ -2,6 +2,7 @@
 # One command to ship a version.
 #
 #   scripts/release.sh            # bump, build both platforms in CI, publish
+#   scripts/release.sh --resume   # keep the current version, reuse its CI run
 #   scripts/release.sh --dry-run  # stop before touching the remote
 #
 # What it does, in order:
@@ -33,6 +34,7 @@ NEED_MINUTES="${NEED_MINUTES:-90}"
 WORK="$(mktemp -d)"
 REPO=""
 DRY=0
+RESUME=0
 FLIPPED=0
 
 step() { printf '\n\033[36m==> %s\033[0m\n' "$*"; }
@@ -42,6 +44,7 @@ die()  { printf '\033[31m  x %s\033[0m\n' "$*" >&2; exit 1; }
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY=1 ;;
+    --resume) RESUME=1 ;;
     -h|--help) sed -n '2,26p' "${BASH_SOURCE[0]}" | sed -e 's/^# \{0,1\}//' -e '/^$/q'; exit 0 ;;
     *) die "unknown argument: $arg" ;;
   esac
@@ -78,16 +81,25 @@ npx wrangler whoami >/dev/null 2>&1 || die "wrangler is not logged in (npx wrang
 echo "   repo $REPO, site $SITE_ORIGIN"
 
 # --------------------------------------------------------------------- bump --
-step "bump version"
-OLD="$(python3 -c 'import json;print(json.load(open("desktop/package.json"))["version"])')"
-python3 scripts/bump_version.py
-VERSION="$(python3 -c 'import json;print(json.load(open("desktop/package.json"))["version"])')"
-TAG="v$VERSION"
-[[ "$VERSION" != "$OLD" ]] || die "version did not change"
-git add -A
-git commit -q -m "release $VERSION"
-git tag "$TAG"
-echo "   $OLD -> $VERSION"
+if [[ $RESUME == 1 ]]; then
+  step "resuming the current version"
+  VERSION="$(python3 -c 'import json;print(json.load(open("desktop/package.json"))["version"])')"
+  TAG="v$VERSION"
+  git tag --list "$TAG" | grep -q . || die "no local tag $TAG — nothing to resume"
+  git ls-remote --tags origin "refs/tags/$TAG" | grep -q . || die "tag $TAG was never pushed"
+  echo "   $TAG"
+else
+  step "bump version"
+  OLD="$(python3 -c 'import json;print(json.load(open("desktop/package.json"))["version"])')"
+  python3 scripts/bump_version.py
+  VERSION="$(python3 -c 'import json;print(json.load(open("desktop/package.json"))["version"])')"
+  TAG="v$VERSION"
+  [[ "$VERSION" != "$OLD" ]] || die "version did not change"
+  git add -A
+  git commit -q -m "release $VERSION"
+  git tag "$TAG"
+  echo "   $OLD -> $VERSION"
+fi
 
 # -------------------------------------------------------------------- quota --
 # GitHub bills per job, rounded up to the minute, times the runner multiplier
@@ -134,24 +146,32 @@ fi
 
 if [[ $DRY == 1 ]]; then
   step "dry run — dropping the local commit and tag"
-  git tag -d "$TAG" >/dev/null 2>&1 || true
-  git reset -q --hard HEAD~1
+  if [[ $RESUME == 0 ]]; then
+    git tag -d "$TAG" >/dev/null 2>&1 || true
+    git reset -q --hard HEAD~1
+  fi
   exit 0
 fi
 
 # -------------------------------------------------------------------- build --
-step "pushing $TAG and waiting for CI"
-git push origin main
-git push origin "$TAG"
+if [[ $RESUME == 1 ]]; then
+  step "waiting for the existing CI run"
+else
+  step "pushing $TAG and waiting for CI"
+  git push origin main
+  git push origin "$TAG"
+fi
 SHA="$(git rev-parse HEAD)"
 RUN=""
 for _ in $(seq 1 30); do
-  RUN="$(gh run list --workflow build.yml --commit "$SHA" --limit 5 \
+  # headBranch carries the tag name for tag runs; filtering on the commit alone
+  # would pick up the main-branch run, which skips the build job on purpose.
+  RUN="$(gh run list --workflow build.yml --branch "$TAG" --commit "$SHA" --limit 5 \
          --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)"
   [[ -n "$RUN" ]] && break
   sleep 5
 done
-[[ -n "$RUN" ]] || die "no workflow run appeared for $SHA"
+[[ -n "$RUN" ]] || die "no workflow run appeared for $TAG"
 echo "   run $RUN"
 if ! gh run watch "$RUN" --interval 20 --exit-status >/dev/null 2>&1; then
   gh run view "$RUN" --log-failed | tail -60 || true
