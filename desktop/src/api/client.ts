@@ -371,7 +371,8 @@ export class Api {
   }) =>
     this.request<{ ok: boolean; message: string; account: Account }>(
       "/api/accounts/login",
-      { method: "POST", body: JSON.stringify(payload), timeout: READ_TIMEOUT },
+      // Covers the 2FA wait: the request stays open while the operator types.
+      { method: "POST", body: JSON.stringify(payload), timeout: LOGIN_READ_TIMEOUT },
     );
 
   cancelCheck = () =>

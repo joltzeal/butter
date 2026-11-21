@@ -99,10 +99,11 @@ def _run_sync(email: str, password: str, proxy: str | None, code: str | None,
     if status != 409:
         raise ProtocolLoginError("complete", f"status={status}")
 
-    # Apple opened the challenge: warm the auth page, then park. The operator
-    # types the code in the app and the caller resumes on this same client.
+    # Apple opened the challenge. Park here and touch nothing else: the auth
+    # page hands out a short-lived ``scnt``, and prefetching now would let it go
+    # stale while the operator reads the code off a device. ``_finish`` warms it
+    # right before the code is verified instead.
     step("hsa2")
-    client.prefetch_auth()
     LOGGER.info("[chain] 停在这里等验证码")
     return {
         "ok": False,
@@ -115,7 +116,15 @@ def _run_sync(email: str, password: str, proxy: str | None, code: str | None,
 
 def _finish(client, code: str, progress, step, defer_store: bool) -> dict[str, Any]:
     """Verify the code on the parked client, then finish the chain."""
-    LOGGER.info("[chain] 续用会话校验验证码")
+    LOGGER.info("[chain] 收到验证码，续用会话")
+    # The 2FA endpoint only accepts a fresh ``scnt``, and the challenge page is
+    # what issues it. Fetching it here — after the code exists — is what keeps it
+    # from expiring during the wait.
+    try:
+        prefetch = client.prefetch_auth()
+        LOGGER.info("[chain] auth 预热 status=%s", getattr(prefetch, "status_code", 0))
+    except Exception as exc:  # noqa: BLE001 - verify below reports the real failure
+        LOGGER.warning("[chain] auth 预热失败: %s", exc)
     try:
         verify = client.verify_security_code(code)
     except Exception as exc:  # noqa: BLE001
