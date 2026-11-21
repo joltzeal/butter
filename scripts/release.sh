@@ -180,14 +180,28 @@ for _ in $(seq 1 30); do
 done
 [[ -n "$RUN" ]] || die "no workflow run appeared for $TAG"
 echo "   run $RUN"
-if ! gh run watch "$RUN" --interval 20 --exit-status >/dev/null 2>&1; then
-  warn "run $RUN failed — see the artefacts below; aborting if either build is missing"
-  gh run view "$RUN" --log-failed 2>/dev/null | tail -40 || true
-fi
+# gh run watch drops out on transient API hiccups, which used to look like a
+# finished run; poll the state instead and only trust "completed".
+while :; do
+  ST="$(gh run view "$RUN" --json status,conclusion --jq '.status + " " + .conclusion' 2>/dev/null || echo "unknown ")"
+  [[ "$ST" == completed* ]] && break
+  printf '   %s\r' "$ST"
+  sleep 20
+done
+echo "   $ST"
+case "$ST" in
+  *failure|*cancelled) warn "run $RUN ended as ${ST#* } — aborting if an artefact is missing"
+                      gh run view "$RUN" --log-failed 2>/dev/null | tail -40 || true ;;
+esac
 
 # ---------------------------------------------------------------- artefacts --
 step "downloading artefacts"
-gh run download "$RUN" -D "$WORK"
+for attempt in 1 2 3 4 5; do
+  gh run download "$RUN" -D "$WORK" && break
+  (( attempt == 5 )) && die "could not download artefacts for run $RUN"
+  warn "download failed, retrying in 15s"
+  sleep 15
+done
 EXE="$(find "$WORK" -name '*_x64-setup.exe' | head -1)"
 DMG="$(find "$WORK" -name '*.dmg' | head -1)"
 MAC_UPD="$(find "$WORK" -name '*.app.tar.gz' | head -1)"
