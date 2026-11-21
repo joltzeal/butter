@@ -96,7 +96,7 @@ export function BulkImportDialog({
       open={open}
       onClose={onClose}
       title="批量导入"
-      subtitle={`每行一个账号，格式固定为 邮箱${SEP}密码${SEP}2FA 链接`}
+      subtitle={`每行 邮箱${SEP}密码${SEP}2FA 链接`}
       icon={Upload}
       size="md"
       busy={busy}

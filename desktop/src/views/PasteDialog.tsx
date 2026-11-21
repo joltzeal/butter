@@ -96,7 +96,6 @@ export function PasteDialog({
       open={open}
       onClose={onClose}
       title="粘贴识别"
-      subtitle="支持中文标签、英文标签、键值流、空行嵌套、卡片块与 JSON"
       icon={ClipboardPaste}
       size="md"
       busy={busy}

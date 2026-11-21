@@ -51,7 +51,6 @@ export function AddAccountDialog({
       open={open}
       onClose={onClose}
       title="添加账号"
-      subtitle="密码只保存在本机；保存后按需单独登录"
       icon={UserPlus}
       busy={busy}
       onSubmit={submit}
@@ -77,7 +76,7 @@ export function AddAccountDialog({
           onChange={(event) => setEmail(event.target.value)}
         />
       </Field>
-      <Field label="密码" hint="明文保存，可后续在编辑里查看">
+      <Field label="密码">
         <input
           name="password"
           type="text"
@@ -88,7 +87,7 @@ export function AddAccountDialog({
           onChange={(event) => setPassword(event.target.value)}
         />
       </Field>
-      <Field label="2FA 链接" hint="可选。留空则登录到两步验证时弹框手动输入">
+      <Field label="2FA 链接">
         <input
           name="code_url"
           type="url"
@@ -97,7 +96,7 @@ export function AddAccountDialog({
           onChange={(event) => setCodeUrl(event.target.value)}
         />
       </Field>
-      <Field label="备注" hint="可选，便于在列表中识别">
+      <Field label="备注">
         <input name="note" placeholder="例如：US 主号" value={note} onChange={(event) => setNote(event.target.value)} />
       </Field>
     </Dialog>

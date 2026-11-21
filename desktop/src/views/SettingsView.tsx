@@ -133,7 +133,6 @@ export function SettingsView() {
       <div className="page__head">
         <div>
           <h1>设置</h1>
-          <p>外观与探测节奏 · 改动即时保存</p>
         </div>
       </div>
 
@@ -141,7 +140,6 @@ export function SettingsView() {
         <div className="setting-row" style={{ paddingTop: 0 }}>
           <div className="setting-row__text">
             <strong>主题</strong>
-            <span>深色为默认；浅色适合强光环境</span>
           </div>
           <div className="setting-row__control">
             <div className="seg">
@@ -160,7 +158,6 @@ export function SettingsView() {
         <div className="setting-row" style={{ paddingTop: 0 }}>
           <div className="setting-row__text">
             <strong>会话实时探活</strong>
-            <span>定期检查会话是否还可答，失效的账号立刻标记离线</span>
           </div>
           <div className="setting-row__control">
             <button
@@ -176,7 +173,7 @@ export function SettingsView() {
         <div className="setting-row">
           <div className="setting-row__text">
             <strong>探活间隔</strong>
-            <span>秒；只发一个轻量请求，可设得比较短（5–300）</span>
+            <span>秒（5–300）</span>
           </div>
           <div className="setting-row__control">
             <input
@@ -196,7 +193,7 @@ export function SettingsView() {
         <div className="setting-row">
           <div className="setting-row__text">
             <strong>网络重试次数</strong>
-            <span>仅对代理 / TLS 类错误重试，密码错误不重试（0–10）</span>
+            <span>0–10</span>
           </div>
           <div className="setting-row__control">
             <input
@@ -216,7 +213,6 @@ export function SettingsView() {
         <div className="setting-row">
           <div className="setting-row__text">
             <strong>详细网络日志</strong>
-            <span>把每个请求的状态码记入事件日志</span>
           </div>
           <div className="setting-row__control">
             <button
@@ -232,7 +228,6 @@ export function SettingsView() {
         <div className="setting-row">
           <div className="setting-row__text">
             <strong>浏览器版本</strong>
-            <span>用于匹配请求特征</span>
           </div>
           <div className="setting-row__control">
             <select
@@ -287,7 +282,7 @@ export function SettingsView() {
                 ? updater.error
                 : updater.state === "available"
                   ? updater.info?.notes || "下载后需重启应用"
-                  : "从 GitHub Release 拉取，签名由壳内公钥校验"}
+                  : ""}
             </span>
             {updater.state === "downloading" ? (
               <div className="progress" aria-label="下载进度" role="progressbar" aria-valuenow={updater.progress}>
@@ -333,7 +328,6 @@ export function SettingsView() {
         <div className="setting-row">
           <div className="setting-row__text">
             <strong>{license?.licensed ? "续期" : "输入激活码"}</strong>
-            <span>{license?.licensed ? "再输入一个码即可延长" : "绑定当前设备"}</span>
           </div>
           <div className="setting-row__control">
             <input

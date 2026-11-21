@@ -106,7 +106,7 @@ export function NetworkView() {
       <div className="page__head">
         <div>
           <h1>网络</h1>
-          <p>代理模式决定每个请求的出口线路{saved ? " · 已保存" : ""}</p>
+          <p>{saved ? "已保存" : ""}</p>
         </div>
         <div className="page__actions">
           <Button
@@ -125,7 +125,7 @@ export function NetworkView() {
         </div>
       </div>
 
-      <Panel title="出口模式" subtitle="修改后 0.3 秒自动保存">
+      <Panel title="出口模式">
         <div className="seg" style={{ marginBottom: 12 }}>
           {(
             [
@@ -149,12 +149,12 @@ export function NetworkView() {
 
         <div className="dim tiny" style={{ marginBottom: 10, lineHeight: 1.6 }}>
           {settings.proxy_mode === "direct"
-            ? "直连：URL 留空即完全直连；填 URL 则全局走该代理（socks5h:// 会让代理解析 DNS）。"
+            ? "URL 留空即完全直连。"
             : settings.proxy_mode === "custom"
-              ? "固定代理：填上游 host/port/账号，所有账号按 sid 复用同一出口会话。"
+              ? "所有账号共用这一个上游出口。"
               : settings.proxy_mode === "clash"
-                ? "本机代理：复用你已经在运行的代理客户端，只切换节点，不改变原有规则。"
-                : "内置代理：由 Butter 自动配置；不加节点为单跳，添加节点后按顺序轮换出站。"}
+                ? "复用本机已运行的客户端，只切节点。"
+                : "由 Butter 自己拉起，不加节点为单跳。"}
         </div>
 
         {upstream && !settings.proxy_host ? (
@@ -241,7 +241,7 @@ export function NetworkView() {
       {settings.proxy_mode === "mihomo" ? (
         <Panel
           title="HK 节点池（可选）"
-          subtitle="不填 = 单跳直出上游代理；填了 = 上游经 HK-LB 轮询节点链式出站"
+          subtitle="不加节点为单跳，加了按顺序轮换"
           actions={
             <Button icon={Plus} variant="ghost" onClick={addNode}>
               添加节点
@@ -309,7 +309,7 @@ export function NetworkView() {
           }
         >
           <div className="grid-3" style={{ marginBottom: 12 }}>
-            <Field label="控制接口" hint="代理客户端的本地控制地址">
+            <Field label="控制接口">
               <input
                 name="clash_api"
                 value={settings.clash_api}
@@ -317,7 +317,7 @@ export function NetworkView() {
                 onChange={(event) => patch({ clash_api: event.target.value })}
               />
             </Field>
-            <Field label="SOCKS 入站" hint="请求从这里出去">
+            <Field label="SOCKS 入站">
               <input
                 name="clash_socks"
                 value={settings.clash_socks}
@@ -325,7 +325,7 @@ export function NetworkView() {
                 onChange={(event) => patch({ clash_socks: event.target.value })}
               />
             </Field>
-            <Field label="密钥" hint="没设就留空">
+            <Field label="密钥">
               <input
                 name="clash_secret"
                 value={settings.clash_secret}
@@ -337,7 +337,6 @@ export function NetworkView() {
           <div className="setting-row">
             <div className="setting-row__text">
               <strong>切换组</strong>
-              <span>轮换/手动切节点都作用于这个 Selector 组</span>
             </div>
             <div className="setting-row__control">
               <select
@@ -359,7 +358,6 @@ export function NetworkView() {
           <div className="setting-row">
             <div className="setting-row__text">
               <strong>按区域轮换</strong>
-              <span>批量跑账号时每个账号换一个出口节点</span>
             </div>
             <div className="setting-row__control">
               {(["HK", "US", "UK"] as const).map((region) => (
@@ -385,7 +383,6 @@ export function NetworkView() {
           <div className="setting-row" style={{ alignItems: "flex-start" }}>
             <div className="setting-row__text">
               <strong>节点</strong>
-              <span>点击即切换；括号内为最近一次延迟</span>
             </div>
             <div className="setting-row__control" style={{ minWidth: 320 }}>
               <input
@@ -435,9 +432,7 @@ export function NetworkView() {
       <Panel
         title="内置代理"
         subtitle={
-          settings.proxy_mode === "mihomo"
-            ? "需要先完成上面的代理配置"
-            : "仅「内置代理」模式需要在这里启动；「本机代理」会复用已运行的客户端"
+          settings.proxy_mode === "mihomo" ? "先完成上面的配置" : "仅「内置代理」模式可用"
         }
         actions={
           <>

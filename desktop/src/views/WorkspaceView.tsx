@@ -529,7 +529,7 @@ export function WorkspaceView() {
                   <ShieldOff style={{ width: 20, color: "var(--amber)" }} />
                   <strong>{notice || "还没有读取账单"}</strong>
                   <span>
-                    {notice ? "验证码输入后会自动继续" : "点击下方按钮从 Apple 获取这个账号的账单"}
+                    {notice ? "验证码输入后会自动继续" : "从 Apple 读取账单"}
                   </span>
                   <Button icon={RefreshCw} variant="primary" onClick={() => void load()}>
                     获取账单信息
@@ -865,8 +865,8 @@ export function WorkspaceView() {
         title={confirmDelete && confirmDelete.length > 1 ? `删除 ${confirmDelete.length} 个账号` : "删除账号"}
         description={
           confirmDelete && confirmDelete.length > 1
-            ? "这些账号会从表格中移除，本地会话一并清掉。Apple ID 本身不受影响。"
-            : `将移除 ${confirmDelete?.[0] ?? ""} 及其本地会话。Apple ID 本身不受影响。`
+            ? "本地记录和会话会被删除，Apple ID 不受影响。"
+            : `移除 ${confirmDelete?.[0] ?? ""} 及其本地会话。`
         }
         confirmLabel="删除"
         onCancel={() => setConfirmDelete(null)}
@@ -895,7 +895,7 @@ export function WorkspaceView() {
       <ConfirmDialog
         open={confirmRemove}
         title="移除账单"
-        description="将从该 Apple ID 上删除当前的付款方式（两步确认）。此操作不可撤销。"
+        description="删除当前的付款方式，不可撤销。"
         confirmLabel="移除"
         onCancel={() => setConfirmRemove(false)}
         onConfirm={async () => {

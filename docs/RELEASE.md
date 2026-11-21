@@ -2,7 +2,19 @@
 
 发一版需要同时满足：**代码能过 CI**、**能签名**、**能更新**。下面按顺序来。
 
-## 0. 仓库侧配置（一次性）
+## 本地发版（推荐，不走 CI）
+
+```bash
+TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/butter-updater.key)" scripts/release_local.sh
+```
+
+脚本会：按当前系统构建 → 用 updater 密钥签名 → 把安装包和签名传到 R2 的 `releases/v<版本>/` → 覆盖 `latest.json`。站点 `https://butter-site-4i1.pages.dev/dl/...` 通过 Pages Function 直接读桶，`desktop/src-tauri/tauri.conf.json` 的更新端点就指向 `/dl/latest.json`。
+
+- 上传必须带 `--remote`：仓库里有 `wrangler.toml` 时 `wrangler r2 object put` 默认写本地 `.wrangler/state`，线上读不到。
+- 只发 macOS（Apple Silicon）可以完全在 Mac 上完成；Windows 包还缺 sidecar，见下。
+- `site/` 改完用 `cd site && npx wrangler pages deploy public --project-name butter-site --branch main` 发布。
+
+## 0. 仓库侧配置（CI 发版时）
 
 | 类型 | 名字 | 用途 | 当前 |
 |---|---|---|---|
@@ -20,6 +32,10 @@
 - endpoint 写死在 `tauri.conf.json`：`raw.githubusercontent.com/joltzeal/butter/refs/heads/latest/latest.json`（必须带 `refs/heads/`，裸分支名返回空 200）
 - CI 的 `manifest` job 会把资产地址改写成 `api.github.com/repos/.../releases/assets/<id>` 再推分支
 - 私有仓库的 Actions 分钟要计费，额度用尽后 job 会在 2 秒内失败、`runner_name` 为空。额度紧张时先把仓库临时转公开跑构建，跑完再转回私有（公开仓库 Actions 免费）。
+
+## CI 发版（可选，需要 Actions 分钟）
+
+私有仓库的分钟要计费，额度用尽后 job 会在 2 秒内失败。额度紧张就临时转公开跑，跑完转回私有。
 
 ## 1. 签名密钥保管
 

@@ -1,0 +1,167 @@
+:root {
+  color-scheme: dark;
+  --bg: #0c0a09;
+  --panel: #16130f;
+  --line: #241f19;
+  --text: #f5efe6;
+  --dim: #8a8073;
+  --amber: #f2b25c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.65 -apple-system, "SF Pro Text", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+header {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 24px;
+  font-weight: 600;
+}
+
+header img {
+  border-radius: 7px;
+}
+
+main {
+  width: 100%;
+  max-width: 720px;
+  padding: 8px 24px 64px;
+}
+
+h1 {
+  font-size: 30px;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  margin: 24px 0 12px;
+}
+
+.lead {
+  color: var(--dim);
+  margin: 0 0 28px;
+  max-width: 46ch;
+}
+
+.downloads {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.btn:hover {
+  border-color: var(--dim);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn.primary {
+  background: linear-gradient(180deg, #ffc978, var(--amber));
+  border-color: transparent;
+  color: #2a1c07;
+}
+
+.btn strong {
+  font-size: 15px;
+}
+
+.btn span {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.version {
+  margin: 14px 0 40px;
+  font-size: 12px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+section {
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+  margin-top: 28px;
+}
+
+h2 {
+  font-size: 14px;
+  margin: 0 0 10px;
+}
+
+ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--dim);
+}
+
+li + li {
+  margin-top: 6px;
+}
+
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+footer {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  justify-content: space-between;
+  padding: 20px 24px 40px;
+  font-size: 12px;
+  color: var(--dim);
+  border-top: 1px solid var(--line);
+}
+
+footer a {
+  color: var(--dim);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #f7f4ee;
+    --panel: #fffdf9;
+    --line: #e4dbcc;
+    --text: #211c16;
+    --dim: #7d7365;
+    --amber: #9c5c16;
+  }
+
+  .btn.primary {
+    color: #fffaf0;
+  }
+}

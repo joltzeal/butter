@@ -44,7 +44,7 @@ export function LogsView() {
       <div className="page__head">
         <div>
           <h1>事件</h1>
-          <p>登录、账单与会话检测的实时进度流（WebSocket）</p>
+          <p>登录、账单与会话检测的进度</p>
         </div>
         <div className="page__actions">
           <div className="seg">

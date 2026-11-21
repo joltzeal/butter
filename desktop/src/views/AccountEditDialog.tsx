@@ -99,7 +99,7 @@ export function AccountEditDialog({
           onChange={(event) => setEmail(event.target.value)}
         />
       </Field>
-      <Field label="密码" hint={account?.has_password ? "明文显示，可直接改" : "尚未保存"}>
+      <Field label="密码" hint={account?.has_password ? undefined : "尚未保存"}>
         <input
           name="password"
           type="text"
@@ -113,9 +113,6 @@ export function AccountEditDialog({
       <Field label="备注">
         <input name="note" value={note} onChange={(event) => setNote(event.target.value)} />
       </Field>
-      <p className="dim tiny" style={{ margin: 0, lineHeight: 1.6 }}>
-        改邮箱后旧会话失效，需要重新登录一次。
-      </p>
     </Dialog>
   );
 }

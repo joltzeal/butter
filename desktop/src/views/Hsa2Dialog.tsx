@@ -112,7 +112,7 @@ export function Hsa2Dialog({
           ? error
           : touched && code.length > 0 && !valid
             ? `还差 ${CODE_LENGTH - code.length} 位，需 ${CODE_LENGTH} 位数字`
-            : "6 位数字 · 5 分钟内有效，连续错误 3 次需重新登录"}
+            : "5 分钟内有效，错 3 次需重登"}
       </div>
     </Dialog>
   );
