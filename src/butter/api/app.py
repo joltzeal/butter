@@ -187,6 +187,12 @@ def create_app() -> FastAPI:
     )
 
     # --- meta -------------------------------------------------------------
+    @app.get("/api/_probe")
+    async def _probe(n: str = "") -> dict[str, str]:
+        """Temporary: lets the webview report DOM counts into the backend log."""
+        LOGGER.info("[probe] %s", n)
+        return {"ok": "1"}
+
     @app.get("/api/health")
     async def health() -> dict[str, Any]:
         st = get_state()

@@ -194,6 +194,19 @@ export function WorkspaceView() {
     if (waiting) setHsa2Email(waiting.email);
   }, [accounts, hsa2Email]);
 
+  // TEMP probe: report how many dialog backdrops the DOM actually holds.
+  useEffect(() => {
+    if (!api || !import.meta.env.DEV) return;
+    const base = (api as unknown as { base: string }).base;
+    const id = window.setInterval(() => {
+      const bd = document.querySelectorAll(".modal-backdrop").length;
+      const dlg = document.querySelectorAll("[role=dialog]").length;
+      const hsa2 = hsa2Email ? 1 : 0;
+      void fetch(`${base}/api/_probe?n=bd${bd}-dlg${dlg}-hsa2${hsa2}`).catch(() => {});
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [api, hsa2Email]);
+
   useEffect(() => {
     if (!lastEvent || !selected) return;
     if (lastEvent.event === "billing.fetched" && lastEvent.payload.email === selected) {
