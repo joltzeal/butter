@@ -134,9 +134,8 @@ fi
 
 if [[ $DRY == 1 ]]; then
   step "dry run — dropping the local commit and tag"
-  git tag -d "$TAG" >/dev/null
-  git reset -q --soft HEAD~1
-  git restore --staged . >/dev/null 2>&1 || git reset -q
+  git tag -d "$TAG" >/dev/null 2>&1 || true
+  git reset -q --hard HEAD~1
   exit 0
 fi
 
