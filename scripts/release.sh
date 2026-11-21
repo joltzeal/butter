@@ -95,56 +95,13 @@ echo "   $OLD -> $VERSION"
 # this account, so the numbers come from the jobs endpoint instead.
 step "checking Actions quota"
 VISIBILITY="$(gh repo view --json visibility --jq .visibility)"
-read -r USED_MIN REMAIN < <(python3 - <<'QPY'
-import datetime, json, math, os, subprocess, sys
-
-MULT = {"windows": 2, "macos": 10}
-
-def gh(path):
-    out = subprocess.run(["gh", "api", path], capture_output=True, text=True)
-    if out.returncode != 0:
-        return None
-    try:
-        return json.loads(out.stdout)
-    except json.JSONDecodeError:
-        return None
-
-quota = os.environ.get("GITHUB_QUOTA_MINUTES", "").strip()
-if not quota:
-    user = gh("user") or {}
-    plan = (user.get("plan") or {}).get("name", "")
-    quota = {"pro": 3000, "team": 10000}.get(plan, 2000)
-    if not plan:
-        print("   ! plan unreadable (gh token lacks the 'user' scope), assuming the free 2000", file=sys.stderr)
-quota = int(quota)
-
-since = datetime.datetime.now(datetime.timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-since_s = since.strftime("%Y-%m-%dT%H:%M:%SZ")
-used = 0.0
-
-for repo in gh("/user/repos?per_page=100&affiliation=owner") or []:
-    if not repo.get("private"):
-        continue
-    name = repo["full_name"]
-    print(f"   scanning {name}", file=sys.stderr)
-    data = gh(f"/repos/{name}/actions/runs?created=%3E={since_s}&per_page=100") or {}
-    for run in (data.get("workflow_runs") or [])[:100]:
-        jobs = (gh(f"/repos/{name}/actions/runs/{run['id']}/jobs?per_page=100") or {}).get("jobs") or []
-        for job in jobs:
-            if not job.get("started_at") or not job.get("completed_at"):
-                continue
-            start = datetime.datetime.fromisoformat(job["started_at"].replace("Z", "+00:00"))
-            end = datetime.datetime.fromisoformat(job["completed_at"].replace("Z", "+00:00"))
-            seconds = max(1.0, (end - start).total_seconds())
-            labels = " ".join(job.get("labels") or []).lower()
-            factor = next((m for k, m in MULT.items() if k in labels), 1)
-            used += math.ceil(seconds / 60) * factor
-
-used_min = math.ceil(used)
-print(f"{used_min} {quota - used_min}")
-QPY
-)
-echo "   used ~$USED_MIN of ${GITHUB_QUOTA_MINUTES:-2000} min, remaining ~$REMAIN"
+if ! __quota_out="$(python3 scripts/quota_remaining.py)"; then
+  warn "quota probe failed — treating the quota as exhausted"
+  __quota_out="9999 0"
+fi
+USED_MIN="${__quota_out%% *}"
+REMAIN="${__quota_out##* }"
+echo "   used ~$USED_MIN min, remaining ~$REMAIN"
 
 # A run that dies in seconds with no runner assigned means the quota is spent,
 # whatever the arithmetic above thinks.
