@@ -3,59 +3,95 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Butter — Apple ID / 商店账单控制台</title>
-    <meta name="description" content="Butter 是一个本地运行的 Apple ID 与商店账单控制台。下载 macOS 或 Windows 版本。" />
+    <title>Butter · Apple ID 账单控制台</title>
+    <meta name="description" content="本地运行的 Apple ID 与商店账单控制台。批量导入、会话检测、账单读写、出口切换。下载 macOS 或 Windows 版。" />
     <link rel="icon" href="/icon.png" />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <header>
-      <img src="/icon.png" alt="" width="28" height="28" />
-      <span>Butter</span>
+    <header class="bar">
+      <a class="brand" href="/">
+        <img src="/icon.png" alt="" width="24" height="24" />
+        <span>Butter</span>
+      </a>
+      <nav>
+        <a href="#what">功能</a>
+        <a href="#install">安装</a>
+      </nav>
     </header>
 
     <main>
-      <h1>Apple ID 与商店账单，一个窗口管完</h1>
-      <p class="lead">
-        批量导入账号、检查会话、读取和修改账单、切代理线路。本地运行，数据留在这台机器上。
-      </p>
+      <section class="hero">
+        <div class="hero__copy">
+          <h1>Apple ID 的账单<br />放进一个窗口</h1>
+          <p>批量导入、会话检测、账单读写、出口切换，全部在本机跑完。</p>
+          <div class="platforms">
+            <a class="dl dl--primary" href="/dl/releases/v0.1.23/Butter_0.1.23_aarch64.dmg" download>
+              <span class="dl__os">macOS</span>
+              <span class="dl__meta">Apple 芯片 · 39 MB</span>
+            </a>
+            <a class="dl" href="/dl/releases/v0.1.23/Butter_0.1.23_x64-setup.exe" download>
+              <span class="dl__os">Windows</span>
+              <span class="dl__meta">x64 · 24 MB</span>
+            </a>
+          </div>
+        </div>
 
-      <div class="downloads">
-        <a class="btn primary" href="/dl/releases/v0.1.23/Butter_0.1.23_aarch64.dmg" download>
-          <strong>macOS</strong>
-          <span>Apple Silicon · DMG · 39 MB</span>
-        </a>
-        <a class="btn" href="/dl/releases/v0.1.23/Butter_0.1.23_x64-setup.exe" download>
-          <strong>Windows</strong>
-          <span>x64 · 安装包 · 24 MB</span>
-        </a>
-      </div>
-
-      <p class="version">v0.1.23</p>
-
-      <section>
-        <h2>第一次打开</h2>
-        <ul>
-          <li>macOS：安装包没有公证，右键 → 打开，或执行 <code>xattr -dr com.apple.quarantine /Applications/Butter.app</code></li>
-          <li>Windows：SmartScreen 选「更多信息 → 仍要运行」</li>
-          <li>未激活可用 2 个账号，激活后不限</li>
-        </ul>
+        <figure class="hero__shot">
+          <img src="/shot.png" width="1280" height="820" alt="Butter 主界面：左侧账号列表，右侧选中账号的账单详情" />
+        </figure>
       </section>
 
-      <section>
+      <section id="what" class="block">
         <h2>功能</h2>
-        <ul>
-          <li>批量导入、批量登录、会话检测，进度实时可见</li>
-          <li>读取、修改、移除商店账单，保存后按服务端实际结果回显</li>
-          <li>直连 / 固定代理 / 本机代理 / 内置 mihomo 四种出口</li>
-          <li>粘贴识别账单文本，自动填表</li>
-        </ul>
+        <dl class="specs">
+          <div>
+            <dt>批量导入</dt>
+            <dd>一行一个账号，导入前逐行校验格式并指出问题行。</dd>
+          </div>
+          <div>
+            <dt>会话检测</dt>
+            <dd>逐个探测会话是否还能作答，掉线立刻标出来。</dd>
+          </div>
+          <div>
+            <dt>账单读写</dt>
+            <dd>读取、修改、移除付款方式，保存后按服务端实际结果回显。</dd>
+          </div>
+          <div>
+            <dt>粘贴识别</dt>
+            <dd>地址和卡号文本直接粘进来，自动拆成表单字段。</dd>
+          </div>
+          <div>
+            <dt>出口切换</dt>
+            <dd>直连、固定代理、本机客户端、内置 mihomo，四种模式互斥。</dd>
+          </div>
+          <div>
+            <dt>本地留存</dt>
+            <dd>账号、会话、设置都躺在应用数据目录，不经过第三方。</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section id="install" class="block">
+        <h2>安装</h2>
+        <div class="notes">
+          <div>
+            <h3>macOS</h3>
+            <p>安装包没有公证，首次会被拦住。右键打开，或者执行下面这行：</p>
+            <code>xattr -dr com.apple.quarantine /Applications/Butter.app</code>
+          </div>
+          <div>
+            <h3>Windows</h3>
+            <p>SmartScreen 会提示未知发布者，点「更多信息」，再点「仍要运行」。</p>
+            <p class="muted">未激活可以用 2 个账号，激活后不限。</p>
+          </div>
+        </div>
       </section>
     </main>
 
-    <footer>
-      <span>Butter v0.1.23</span>
-      <a href="https://github.com/joltzeal/butter">GitHub</a>
+    <footer class="foot">
+      <span>Butter</span>
+      <span>本地运行，不上传账号数据</span>
     </footer>
   </body>
 </html>

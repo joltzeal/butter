@@ -75,7 +75,8 @@ pnpm tauri dev               # Rust 壳自动拉起 Python 后端
 
 ```bash
 ./scripts/build_sidecar.sh             # -> ../backend-dist/butter-backend
-cd desktop && pnpm tauri build         # 产出 .app / .dmg / .msi / .deb / .AppImage
+cd desktop && pnpm tauri build         # 本机出 .app / .dmg
+scripts/release.sh                     # 发版：CI 出 mac+Windows，产物进 R2、换官网链接
 ```
 
 打包后的壳优先使用 `BUTTER_BACKEND` 环境变量，其次是 bundle 内的

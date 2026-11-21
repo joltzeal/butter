@@ -2,6 +2,10 @@
 
 `PyInstaller` 不能交叉编译，`NSIS` 也只有 Windows 版本，所以 Windows 安装包必须在 Windows 上生成。
 
+本机不装 Windows 工具链：`scripts/release.sh` 会把代码推上去让 `.github/workflows/build.yml` 的
+`windows-latest` job 出包，产物随后自动上传到 R2 并换掉官网下载地址（见 [docs/RELEASE.md](docs/RELEASE.md)）。
+下面是那台 runner 上本来就要满足的条件，也是手工在 Windows 机器上出包时的准备项。
+
 ## 一次性准备
 
 | 组件 | 版本 | 说明 |

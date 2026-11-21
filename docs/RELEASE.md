@@ -1,82 +1,77 @@
 # 发布检查单
 
-发一版需要同时满足：**代码能过 CI**、**能签名**、**能更新**。下面按顺序来。
-
-## 本地发版（推荐，不走 CI）
+一条命令发版，Windows 和 mac 都在 CI 上编译，产物自动进 R2 并换掉官网的下载地址：
 
 ```bash
-TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/butter-updater.key)" scripts/release_local.sh
+scripts/release.sh
 ```
 
-脚本会：按当前系统构建 → 用 updater 密钥签名 → 把安装包和签名传到 R2 的 `releases/v<版本>/` → 覆盖 `latest.json`。站点 `https://butter-site-4i1.pages.dev/dl/...` 通过 Pages Function 直接读桶，`desktop/src-tauri/tauri.conf.json` 的更新端点就指向 `/dl/latest.json`。
+脚本自己按顺序做：
 
-- 上传必须带 `--remote`：仓库里有 `wrangler.toml` 时 `wrangler r2 object put` 默认写本地 `.wrangler/state`，线上读不到。
-- 只发 macOS（Apple Silicon）可以完全在 Mac 上完成；Windows 包还缺 sidecar，见下。
-- `site/` 改完用 `cd site && npx wrangler pages deploy public --project-name butter-site --branch main` 发布。
+1. 检查工作区干净、在 `main` 上、`gh` 与 `wrangler` 已登录、updater 私钥在位
+2. 递增 patch 版本（`package.json` / `tauri.conf.json` / `Cargo.toml` / `pyproject.toml`）并提交
+3. 读当月 Actions 已用分钟数：剩余不足 90 分钟就把仓库转**公开**（公开仓库不计分钟），并记下要转回去
+4. 推 `main` + tag → CI 在 `windows-latest` 出 NSIS，在 `macos-latest` 出 dmg 与 updater 包
+5. 等这次 run，失败就打印失败 job 的日志并退出（此时线上没被动过）
+6. 下载全部产物（含 `.sig`）→ 传 R2 的 `releases/v<版本>/`
+7. 重写 `site/public/index.html` 的两个下载链接与体积，部署 Pages
+8. 发布 release，把仓库转回私有
 
-## 0. 仓库侧配置（CI 发版时）
+产物地址：`https://butter-site-4i1.pages.dev/dl/releases/v<版本>/…`，更新清单
+`https://butter-site-4i1.pages.dev/dl/latest.json`（Pages Function 直接读 `butter-downloads` 桶，
+`tauri.conf.json` 的 updater endpoint 就指向它）。
+
+## 常用开关
+
+| 变量 | 作用 |
+|---|---|
+| `--dry-run` | 走到额度判断为止，然后撤掉本地 commit 和 tag，不碰远端 |
+| `NO_PUBLISH=1` | 产物照发，release 留在草稿状态 |
+| `KEEP_VISIBILITY=1` | 永远不转公开，额度不够也私有跑 |
+| `GITHUB_QUOTA_MINUTES=3000` | 计划额度读不到时改这个（free 2000 / pro 3000 / team 10000） |
+
+失败后重跑：脚本会再升一个 patch 版本，直接在 `main` 上重跑即可；同版本的清单条目会合并，不会互相冲掉。
+
+## 0. 仓库侧配置
 
 | 类型 | 名字 | 用途 | 当前 |
 |---|---|---|---|
 | variable | `BUTTER_ACTIVATION_URL` | 构建期注入激活服务 | 已配 |
 | secret | `TAURI_SIGNING_PRIVATE_KEY` | 给 updater 产物签名 | 已配 |
-| secret | `UPDATE_TOKEN` | 私有仓库的 release 资产需要读权限，构建期烘进 `VITE_UPDATE_TOKEN` | 已配（用的是 `gh` 的 OAuth token，会随登录失效，建议换长期 PAT） |
-| secret | `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_SIGNING_IDENTITY` | Developer ID Application 证书（base64 p12） | 未配；workflow 里这六个 env 是注释掉的——空值也会被 bundler 当成"有证书"，然后在空 p12 上失败。配好 secret 后把注释取消 |
+| secret | `UPDATE_TOKEN` | 私有仓库的 release 资产读权限（`VITE_UPDATE_TOKEN`） | 已配；用的是 `gh` 的 OAuth token，会随登录失效，建议换长期 PAT |
+| secret | `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_SIGNING_IDENTITY` | Developer ID Application（base64 p12） | 未配；workflow 里这六个 env 是注释掉的——空值也会被 bundler 当成"有证书"，然后在空 p12 上失败 |
 | secret | `APPLE_ID` / `APPLE_APP_PASSWORD` / `APPLE_TEAM_ID` | 公证 | 未配 |
-| secret | Windows 代码签名 | NSIS 的 Authenticode（PFX + thumbprint，或 Azure Trusted Signing） | 未配 → SmartScreen 会拦 |
+| secret | Windows 代码签名（PFX + thumbprint / Azure Trusted Signing） | NSIS 的 Authenticode | 未配 → SmartScreen 会拦 |
 
-缺签名证书时 CI 仍然能出包，但装机会弹「未知开发者 / 已阻止」。
-
-**仓库现在是私有**，所以更新走的不是 `releases/latest/download`（私有仓库下带 token 也 404），而是 `latest` 分支上的 manifest + API 资产地址：
-
-- endpoint 写死在 `tauri.conf.json`：`raw.githubusercontent.com/joltzeal/butter/refs/heads/latest/latest.json`（必须带 `refs/heads/`，裸分支名返回空 200）
-- CI 的 `manifest` job 会把资产地址改写成 `api.github.com/repos/.../releases/assets/<id>` 再推分支
-- 私有仓库的 Actions 分钟要计费，额度用尽后 job 会在 2 秒内失败、`runner_name` 为空。额度紧张时先把仓库临时转公开跑构建，跑完再转回私有（公开仓库 Actions 免费）。
-
-## CI 发版（可选，需要 Actions 分钟）
-
-私有仓库的分钟要计费，额度用尽后 job 会在 2 秒内失败。额度紧张就临时转公开跑，跑完转回私有。
+缺签名证书时照样能出包，只是装机会弹「未知开发者 / 已阻止」。
 
 ## 1. 签名密钥保管
 
-- 私钥在 `~/.tauri/butter-updater.key`（无密码），公钥已烘进 `tauri.conf.json` 的 `plugins.updater.pubkey`。
-- **丢了私钥 = 已发出去的版本永远收不到更新**，只能换 key + 让用户手动重装。备份它。
-- 本地出包同样要签：
+- 私钥在 `~/.tauri/butter-updater.key`（无密码），公钥烘在 `tauri.conf.json` 的 `plugins.updater.pubkey`。
+- **丢了私钥 = 已发出去的版本永远收不到更新**，只能换 key 让用户手动重装。备份它。
+- 脚本默认从这个路径读；也可以显式 `TAURI_SIGNING_PRIVATE_KEY=… scripts/release.sh`。
 
-```bash
-cd desktop
-TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/butter-updater.key)" pnpm tauri build
-```
+## 2. 版本号
 
-## 2. 改版本
+- 只升不降：用户端比的是 semver，新版本号必须大于已装版本，所以脚本只做 patch 递增。
+- 要跨版本（`0.2.0`）先手动跑 `uv run python scripts/bump_version.py` 再手工打 tag 走同一套流程。
 
-```bash
-uv run python scripts/bump_version.py 0.1.22   # 同步 package.json / Cargo.toml / tauri.conf.json
-```
+## 3. updater 与清单
 
-CI 会校验 tag 与 `desktop/package.json` 的版本是否一致，不一致直接 fail（不然装上的版本号是错的，updater 比较会失效）。
+- `latest.json` 同时含 `darwin-aarch64` 与 `windows-x86_64`，缺一个那边就收不到更新，脚本在缺平台时直接失败。
+- 私钥签名由 CI 的 `TAURI_SIGNING_PRIVATE_KEY` 产生，客户端用二进制里的公钥校验，改不了。
+- 仓库私有/公开切换不影响更新链路：客户端读的是 R2 上的 `/dl/…`，不是 GitHub 资产。
 
-## 3. 打 tag 触发
-
-```bash
-git tag v0.1.22 && git push origin v0.1.22
-```
-
-CI 会：跑 pytest + 前端 `pnpm build` → Windows NSIS / macOS universal app+dmg → 上传带 `.sig` 的 updater 产物和 `latest.json` → 建一个**草稿** release。
-
-## 4. 发布 release（关键）
-
-草稿 release 不算 `latest`，`releases/latest/download/latest.json` 取不到。检查草稿里的 artifact，然后点 **Publish**，更新才会推送到已装用户。
-
-## 5. 客户端侧
+## 4. 客户端侧
 
 - 启动 4 秒后静默检查一次，有新版弹 toast（点「去设置」）。
 - 设置 → 更新：检查 / 下载并安装（带进度）/ 重启并安装。
-- 签名由壳内公钥校验，公钥在二进制里，改不了。
 - macOS 上未公证的更新装入后会再次触发 Gatekeeper（配合第 0 步解决）。
 
-## 版本号与 updater 的约束
+## 5. 站点
 
-- 只升不降：用户端比较的是 semver，新版本号必须大于已装版本。
-- 一次发布里两个平台的 `latest.json` 由 `tauri-action` 合并，不要手工替换成只含单平台的版本。
-- 草稿改完再发，重复点 Publish 不会重发已上传资产。
+`site/` 手工改完单独发：
+
+```bash
+cd site && npx wrangler pages deploy public --project-name butter-site --branch main
+```
