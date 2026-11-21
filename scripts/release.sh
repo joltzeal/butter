@@ -90,36 +90,76 @@ git tag "$TAG"
 echo "   $OLD -> $VERSION"
 
 # -------------------------------------------------------------------- quota --
+# GitHub bills per job, rounded up to the minute, times the runner multiplier
+# (linux 1x, windows 2x, macos 10x). The runs/{id}/timing endpoint reports 0 for
+# this account, so the numbers come from the jobs endpoint instead.
 step "checking Actions quota"
 VISIBILITY="$(gh repo view --json visibility --jq .visibility)"
-QUOTA="${GITHUB_QUOTA_MINUTES:-}"
-if [[ -z "$QUOTA" ]]; then
-  case "$(gh api user --jq '.plan.name // empty' 2>/dev/null)" in
-    pro)  QUOTA=3000 ;;
-    team) QUOTA=10000 ;;
-    "")   QUOTA=2000; warn "plan unreadable (gh token lacks the 'user' scope), assuming the free 2000" ;;
-    *)    QUOTA=2000 ;;
-  esac
+read -r USED_MIN REMAIN < <(python3 - <<'QPY'
+import datetime, json, math, os, subprocess, sys
+
+MULT = {"windows": 2, "macos": 10}
+
+def gh(path):
+    out = subprocess.run(["gh", "api", path], capture_output=True, text=True)
+    if out.returncode != 0:
+        return None
+    try:
+        return json.loads(out.stdout)
+    except json.JSONDecodeError:
+        return None
+
+quota = os.environ.get("GITHUB_QUOTA_MINUTES", "").strip()
+if not quota:
+    user = gh("user") or {}
+    plan = (user.get("plan") or {}).get("name", "")
+    quota = {"pro": 3000, "team": 10000}.get(plan, 2000)
+    if not plan:
+        print("   ! plan unreadable (gh token lacks the 'user' scope), assuming the free 2000", file=sys.stderr)
+quota = int(quota)
+
+since = datetime.datetime.now(datetime.timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+since_s = since.strftime("%Y-%m-%dT%H:%M:%SZ")
+used = 0.0
+
+for repo in gh("/user/repos?per_page=100&affiliation=owner") or []:
+    if not repo.get("private"):
+        continue
+    name = repo["full_name"]
+    print(f"   scanning {name}", file=sys.stderr)
+    data = gh(f"/repos/{name}/actions/runs?created=%3E={since_s}&per_page=100") or {}
+    for run in (data.get("workflow_runs") or [])[:100]:
+        jobs = (gh(f"/repos/{name}/actions/runs/{run['id']}/jobs?per_page=100") or {}).get("jobs") or []
+        for job in jobs:
+            if not job.get("started_at") or not job.get("completed_at"):
+                continue
+            start = datetime.datetime.fromisoformat(job["started_at"].replace("Z", "+00:00"))
+            end = datetime.datetime.fromisoformat(job["completed_at"].replace("Z", "+00:00"))
+            seconds = max(1.0, (end - start).total_seconds())
+            labels = " ".join(job.get("labels") or []).lower()
+            factor = next((m for k, m in MULT.items() if k in labels), 1)
+            used += math.ceil(seconds / 60) * factor
+
+used_min = math.ceil(used)
+print(f"{used_min} {quota - used_min}")
+QPY
+)
+echo "   used ~$USED_MIN of ${GITHUB_QUOTA_MINUTES:-2000} min, remaining ~$REMAIN"
+
+# A run that dies in seconds with no runner assigned means the quota is spent,
+# whatever the arithmetic above thinks.
+if [[ "$VISIBILITY" != "PUBLIC" ]]; then
+  LAST="$(gh run list --workflow build.yml --limit 1 --json databaseId,createdAt,conclusion --jq '.[0].databaseId' 2>/dev/null || true)"
+  if [[ -n "$LAST" ]]; then
+    DEAD="$(gh api "/repos/$REPO/actions/runs/$LAST/jobs?per_page=20" \
+      --jq '[.jobs[]|select(.runner_name == "" or .runner_name == null)]|length' 2>/dev/null || echo 0)"
+    TOTAL="$(gh api "/repos/$REPO/actions/runs/$LAST/jobs?per_page=20" --jq '.total_count' 2>/dev/null || echo 0)"
+    if [[ "${DEAD:-0}" != 0 && "$DEAD" == "$TOTAL" ]]; then
+      warn "last run ($LAST) never got a runner — quota is exhausted"
+      REMAIN=0
+    fi
+  fi
 fi
-# Billing months start on the signup day, not the 1st; starting at month start
-# undercounts usage slightly, which is what NEED_MINUTES is the margin for.
-SINCE="$(date -u +%Y-%m-01T00:00:00Z)"
-USED_MS=0
-while read -r repo; do
-  [[ -n "$repo" ]] || continue
-  echo "   scanning $repo"
-  while read -r run; do
-    [[ -n "$run" ]] || continue
-    ms="$(gh api "/repos/$repo/actions/runs/$run/timing" --jq \
-      '[(.billable.UBUNTU.total_ms // 0),(.billable.WINDOWS.total_ms // 0),(.billable.MACOS.total_ms // 0)]|add' \
-      2>/dev/null || echo 0)"
-    USED_MS=$(( USED_MS + ${ms:-0} ))
-  done < <(gh api "/repos/$repo/actions/runs?created=%3E=$SINCE&per_page=100" \
-             --jq '.workflow_runs[]?.id' 2>/dev/null | head -100)
-done < <(gh api "/user/repos?per_page=100&affiliation=owner" --jq '.[]|select(.private)|.full_name' 2>/dev/null)
-USED_MIN=$(( USED_MS / 60000 ))
-REMAIN=$(( QUOTA - USED_MIN ))
-echo "   used ~$USED_MIN of $QUOTA min, remaining ~$REMAIN"
 
 if [[ "$VISIBILITY" == "PUBLIC" ]]; then
   echo "   repo is already public — minutes are free"
