@@ -7,6 +7,22 @@
     <meta name="description" content="本地运行的 Apple ID 与商店账单控制台。批量导入、会话检测、账单读写、出口切换。下载 macOS 或 Windows 版。" />
     <link rel="icon" href="/icon.png" />
     <link rel="stylesheet" href="/style.css" />
+    <script>
+      // Stamp the visitor's OS before first paint so the emphasised download is
+      // the one that actually installs, and the swap never flashes afterwards.
+      (function () {
+        var ua = navigator.userAgent;
+        var touchMac = /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
+        var os = /Windows|Win64|Win32|WOW64/i.test(ua)
+          ? "windows"
+          : /Android|iPhone|iPad|iPod/i.test(ua) || touchMac
+            ? "mobile"
+            : /Mac OS X|Macintosh/i.test(ua)
+              ? "macos"
+              : "other";
+        document.documentElement.setAttribute("data-os", os);
+      })();
+    </script>
   </head>
   <body>
     <header class="bar">
@@ -26,11 +42,11 @@
           <h1>Apple ID 的账单<br />放进一个窗口</h1>
           <p>批量导入、会话检测、账单读写、出口切换，全部在本机跑完。</p>
           <div class="platforms">
-            <a class="dl dl--primary" href="/dl/releases/v0.1.27/Butter_0.1.27_aarch64.dmg" download>
+            <a class="dl dl--mac" href="/dl/releases/v0.1.27/Butter_0.1.27_aarch64.dmg" download>
               <span class="dl__os">macOS</span>
               <span class="dl__meta">Apple 芯片 · 39 MB</span>
             </a>
-            <a class="dl" href="/dl/releases/v0.1.27/Butter_0.1.27_x64-setup.exe" download>
+            <a class="dl dl--win" href="/dl/releases/v0.1.27/Butter_0.1.27_x64-setup.exe" download>
               <span class="dl__os">Windows</span>
               <span class="dl__meta">x64 · 24 MB</span>
             </a>

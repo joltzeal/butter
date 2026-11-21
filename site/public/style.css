@@ -132,15 +132,42 @@ main {
   transform: translateY(1px);
 }
 
-.dl--primary {
+/* The emphasised download follows the detected OS. `data-os` is stamped on
+   <html> by an inline head script before first paint, so the highlight is
+   already correct on the first frame. Anything that is not Windows — macOS,
+   phones, tablets, unknown clients — keeps the macOS build recommended. */
+:root:not([data-os="windows"]) .dl--mac,
+:root[data-os="windows"] .dl--win {
   background: linear-gradient(180deg, #ffcd88, var(--accent));
   border-color: transparent;
   color: #24170a;
 }
 
-.dl--primary:hover {
+:root:not([data-os="windows"]) .dl--mac:hover,
+:root[data-os="windows"] .dl--win:hover {
   border-color: transparent;
   background: linear-gradient(180deg, #ffd79b, #f5bc6c);
+}
+
+/* The recommended build leads the row, so the first thing a Windows visitor
+   lands on is the file their machine can actually open. */
+:root[data-os="windows"] .dl--win {
+  order: -1;
+}
+
+/* Names why one of them is lit; otherwise the amber just looks arbitrary. */
+:root:not([data-os="windows"]) .dl--mac .dl__os::after,
+:root[data-os="windows"] .dl--win .dl__os::after {
+  content: "推荐";
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(36, 23, 10, 0.14);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  vertical-align: 1px;
 }
 
 .dl__os {

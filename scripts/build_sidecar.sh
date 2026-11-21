@@ -12,6 +12,9 @@ OUT="$ROOT/backend-dist"
 NAME="butter-backend"
 ENGINE="${SIDECAR_ENGINE:-nuitka}"
 cd "$ROOT"
+# CI does `pip install -e .`; a stale editable .pth silently loses the package on
+# a machine where the checkout moved, so put src on the path unconditionally.
+export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 
 # Pick the interpreter that actually has the project's dependencies, and never
 # depend on uv having a virtualenv (CI has none).

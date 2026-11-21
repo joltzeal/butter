@@ -23,7 +23,7 @@ export function Titlebar({
   const label = state === "online" ? "已连接" : state === "boot" ? "连接中" : "离线";
 
   return (
-    <header className="titlebar">
+    <header className="titlebar" data-tauri-drag-region="deep">
       <div className="titlebar__brand">
         <img className="titlebar__mark" src="/butter.png" alt="" />
         <span>Butter</span>

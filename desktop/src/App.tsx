@@ -45,13 +45,15 @@ class Boundary extends Component<{ children: ReactNode }, { error: Error | null 
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div className="boot">
+      <div className="boot" data-tauri-drag-region="deep">
         <div className="boot__card">
           <div className="boot__icon boot__icon--offline">
             <AlertTriangle />
           </div>
           <strong>界面出错了</strong>
-          <pre className="boot__detail">{String(this.state.error.stack ?? this.state.error)}</pre>
+          <pre className="boot__detail" data-tauri-drag-region="false">
+            {String(this.state.error.stack ?? this.state.error)}
+          </pre>
           <div className="row">
             <Button onClick={() => this.setState({ error: null })}>回到界面</Button>
             <Button variant="primary" icon={RefreshCw} onClick={() => location.reload()}>
@@ -70,13 +72,17 @@ function BootScreen() {
   if (state === "online" || ready) return null;
 
   return (
-    <div className="boot" role="status" aria-live="polite">
+    <div className="boot" role="status" aria-live="polite" data-tauri-drag-region="deep">
       <div className="boot__card">
         <div className={state === "offline" ? "boot__icon boot__icon--offline" : "boot__icon"}>
           {state === "offline" ? <AlertTriangle /> : <Loader2 className="spin" />}
         </div>
         <strong>{state === "offline" ? "连接失败" : "启动中…"}</strong>
-        {state === "offline" && error ? <div className="boot__detail tiny dim">{error}</div> : null}
+        {state === "offline" && error ? (
+          <div className="boot__detail tiny dim" data-tauri-drag-region="false">
+            {error}
+          </div>
+        ) : null}
         {state === "offline" ? (
           <Button icon={RefreshCw} variant="primary" onClick={reconnect}>
             重试连接

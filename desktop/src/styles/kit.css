@@ -21,6 +21,10 @@
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   backdrop-filter: blur(18px) saturate(1.1);
+  /* WKWebView ignores `-webkit-app-region`, so the bar is dragged through the
+     `data-tauri-drag-region="deep"` attribute on the header instead; the CSS
+     property stays for the plain-browser preview. `deep` keeps the empty space
+     and the labels draggable while buttons still swallow their own clicks. */
   -webkit-app-region: drag;
   user-select: none;
 }
