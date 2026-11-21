@@ -38,7 +38,14 @@ scripts/release.sh
 - 仓库卡在公开状态 → `gh repo edit joltzeal/butter --visibility private --accept-visibility-change-consequences`。
 - 站点链接被改了一半 → `git restore site/public/index.html` 再重跑。
 
-脚本成功结尾会把站点改动提交并推一次（此时仓库还是公开，用免费分钟跑那一次只跑测试）。
+脚本成功结尾会把站点改动提交并推一次（此时仓库还是公开，那次只跑测试，不占额度）。
+
+运行期间别中断脚本：中途退出会把仓库留在公开状态。要手动兜底就两条命令——
+`gh repo edit joltzeal/butter --visibility private --accept-visibility-change-consequences`、
+`git status` 看一眼有没有半截的站点改动。
+
+CI 里 `publish updater manifest`（GitHub 侧留档）标了 `continue-on-error`，它挂了不会把 run 判红，
+发布链路读的是 R2，不受影响。
 
 ## 0. 仓库侧配置
 
