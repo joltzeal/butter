@@ -211,11 +211,26 @@ MAC_UPD="$(find "$WORK" -name '*.app.tar.gz' | head -1)"
 
 # ------------------------------------------------------------------- upload --
 step "uploading to R2"
+# wrangler dies on a single dropped fetch; a release is not worth restarting for
+# one flaky request: retry each object instead.
+put() {
+  local file="$1" attempt
+  for attempt in 1 2 3 4 5; do
+    if npx wrangler r2 object put "$BUCKET/releases/v$VERSION/${file##*/}" --file "$file" --remote \
+         >"$WORK/put.log" 2>&1; then
+      echo "   ${file##*/}"
+      return 0
+    fi
+    warn "upload of ${file##*/} failed (attempt $attempt)"
+    sleep $(( attempt * 5 ))
+  done
+  tail -5 "$WORK/put.log" >&2
+  die "could not upload ${file##*/}"
+}
 find "$WORK" -type f \( -name '*_x64-setup.exe' -o -name '*_x64-setup.exe.sig' -o -name '*.dmg' \
   -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' \) -print0 |
 while IFS= read -r -d '' f; do
-  npx wrangler r2 object put "$BUCKET/releases/v$VERSION/${f##*/}" --file "$f" --remote >/dev/null
-  echo "   ${f##*/}"
+  put "$f"
 done
 
 step "writing updater manifest"
@@ -247,7 +262,13 @@ json.dump({"version": version, "notes": "",
                __import__("datetime").timezone.utc).isoformat().replace("+00:00", "Z"),
            "platforms": platforms}, open(out, "w"), indent=2)
 PY
-npx wrangler r2 object put "$BUCKET/latest.json" --file "$MANIFEST" --content-type application/json --remote >/dev/null
+for attempt in 1 2 3 4 5; do
+  npx wrangler r2 object put "$BUCKET/latest.json" --file "$MANIFEST" --content-type application/json \
+    --remote >/dev/null 2>&1 && break
+  (( attempt == 5 )) && die "could not upload the manifest"
+  warn "manifest upload failed (attempt $attempt)"
+  sleep $(( attempt * 5 ))
+done
 echo "   $BASE/latest.json"
 
 # --------------------------------------------------------------------- site --
