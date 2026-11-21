@@ -10,17 +10,11 @@ export function AddAccountDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (payload: {
-    email: string;
-    password: string;
-    note: string;
-    code_url: string;
-  }) => Promise<void>;
+  onSubmit: (payload: { email: string; password: string; note: string }) => Promise<void>;
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [note, setNote] = useState("");
-  const [codeUrl, setCodeUrl] = useState("");
   const [busy, setBusy] = useState(false);
 
   // The dialog stays mounted, so opening it again used to show the previous
@@ -30,7 +24,6 @@ export function AddAccountDialog({
     setEmail("");
     setPassword("");
     setNote("");
-    setCodeUrl("");
     setBusy(false);
   }, [open]);
 
@@ -40,7 +33,7 @@ export function AddAccountDialog({
     if (!valid || busy) return;
     setBusy(true);
     try {
-      await onSubmit({ email: email.trim(), password, note, code_url: codeUrl.trim() });
+      await onSubmit({ email: email.trim(), password, note });
     } finally {
       setBusy(false);
     }
@@ -85,15 +78,6 @@ export function AddAccountDialog({
           placeholder="••••••••"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-        />
-      </Field>
-      <Field label="2FA 链接">
-        <input
-          name="code_url"
-          type="url"
-          placeholder="https://…/getcode?id=123"
-          value={codeUrl}
-          onChange={(event) => setCodeUrl(event.target.value)}
         />
       </Field>
       <Field label="备注">

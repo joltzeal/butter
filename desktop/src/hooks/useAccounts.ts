@@ -94,7 +94,7 @@ export function useAccountActions() {
   });
 
   const login = useMutation({
-    mutationFn: (payload: { email: string; password?: string; note?: string; code_url?: string }) =>
+    mutationFn: (payload: { email: string; password?: string; note?: string }) =>
       api.login(payload),
     onSuccess: (result) => {
       invalidate();

@@ -21,7 +21,6 @@ import logging
 from typing import Any
 
 from .apple_exe_replica import IdmsaClient as SyncIdmsaClient
-from .apple_exe_replica import fetch_code
 
 LOGGER = logging.getLogger("butter.login")
 
@@ -35,8 +34,7 @@ class ProtocolLoginError(RuntimeError):
         self.detail = detail
 
 
-def _run_sync(email: str, password: str, proxy: str | None,
-              code_url: str | None, code: str | None,
+def _run_sync(email: str, password: str, proxy: str | None, code: str | None,
               progress, defer_store: bool = False,
               resume=None) -> dict[str, Any]:
     """Blocking login. Returns a dict the async caller turns into a LoginOutcome."""
@@ -101,30 +99,18 @@ def _run_sync(email: str, password: str, proxy: str | None,
     if status != 409:
         raise ProtocolLoginError("complete", f"status={status}")
 
+    # Apple opened the challenge: warm the auth page, then park. The operator
+    # types the code in the app and the caller resumes on this same client.
     step("hsa2")
-    # Fetch the code *before* the auth prefetch: the two calls are independent
-    # and the code endpoint is the second-slowest hop (~2s).
-    if not code and code_url:
-        # Short budget: with no code in hand the operator is blocked, and the
-        # dialog can only open once this returns. A device-OTP account with no
-        # SMS never produces a code here at all.
-        try:
-            code = fetch_code(code_url)
-        except Exception as exc:  # noqa: BLE001 - a dead endpoint just means typed input
-            LOGGER.info("[chain] 取码失败，改为手动输入: %s", exc)
-            code = None
     client.prefetch_auth()
-    if not code:
-        LOGGER.info("[chain] 停在这里等验证码")
-        return {
-            "ok": False,
-            "hsa2_required": True,
-            "session": client.s,
-            "client": client,
-            "message": "需要两步验证码",
-        }
-
-    return _finish(client, code, progress, step, defer_store)
+    LOGGER.info("[chain] 停在这里等验证码")
+    return {
+        "ok": False,
+        "hsa2_required": True,
+        "session": client.s,
+        "client": client,
+        "message": "需要两步验证码",
+    }
 
 
 def _finish(client, code: str, progress, step, defer_store: bool) -> dict[str, Any]:
@@ -174,7 +160,6 @@ async def protocol_login(
     password: str,
     *,
     proxy: str | None = None,
-    code_url: str | None = None,
     code: str | None = None,
     progress=None,
     defer_store: bool = False,
@@ -182,5 +167,5 @@ async def protocol_login(
 ) -> dict[str, Any]:
     """Async wrapper around the verified synchronous chain."""
     return await asyncio.to_thread(
-        _run_sync, email, password, proxy, code_url, code, progress, defer_store, resume
+        _run_sync, email, password, proxy, code, progress, defer_store, resume
     )

@@ -8,20 +8,17 @@ const CODE_LENGTH = 6;
 /**
  * Two-factor code entry.
  *
- * Shown when the login stops at HSA2 and no usable ``code_url`` was available:
- * the operator reads the code off their device and types it.
+ * Shown when the login parks at HSA2: the operator reads the code off their
+ * device and types it.
  */
 export function Hsa2Dialog({
   open,
   email,
-  reason,
   onSubmit,
   onCancel,
 }: {
   open: boolean;
   email: string;
-  /** Why the automatic fetch did not happen, shown as context. */
-  reason?: string;
   /** Resolve `true` when the backend accepted the code. */
   onSubmit: (code: string) => Promise<boolean>;
   onCancel: () => void;
@@ -76,10 +73,6 @@ export function Hsa2Dialog({
         </>
       }
     >
-      {reason ? (
-        <div className="note note--warn tiny">{reason}</div>
-      ) : null}
-
       <input
         ref={input}
         name="one-time-code"

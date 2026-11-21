@@ -61,7 +61,7 @@ class NullSink:
         return None
 
 
-HSA2Provider = Callable[..., Awaitable[str | None]]
+HSA2Provider = Callable[[str], Awaitable[str | None]]
 
 
 @dataclass
@@ -70,10 +70,8 @@ class LoginRequest:
     password: str = ""
     note: str = ""
     persist: bool = True
-    # Optional 2FA hooks: an inline code, or a URL that serves the 6 digits.
+    # A 6-digit code submitted after the login parked on 2FA.
     code: str = ""
-    code_url: str = ""
-    force_legacy: bool = False
 
 
 @dataclass
@@ -228,16 +226,11 @@ class Services:
             account.password = request.password
         if request.note:
             account.note = request.note
-        if request.code_url:
-            account.code_url = request.code_url
         # Persist up front: the account has to be visible in the list while the
         # login waits for a code, or the UI cannot surface the pending state.
         self.store.upsert(account)
-        attempts = retries or max(1, self.settings.retry_attempts)
-        last_error = ""
 
-        # Verified protocol chain first (see PROTOCOL.md). The legacy async client
-        # below is kept only as a fallback for accounts that need its repair path.
+        # One verified chain only, see PROTOCOL.md.
         self._emit("login.progress", email=account.email, attempt=1, stage="connect")
         self._mark_busy(account.email, True)
         try:
@@ -245,7 +238,6 @@ class Services:
                 account.email,
                 account.password,
                 proxy=self._proxy_url(account),
-                code_url=request.code_url or account.code_url,
                 code=request.code,
                 defer_store=not inline_store,
                 progress=lambda stage: self._emit(
@@ -260,13 +252,8 @@ class Services:
         # 2FA: ask once, verify once, on the parked session. No retry ladder —
         # a rejected code is reported, and the next login opens a new challenge.
         if result.get("hsa2_required") and not result.get("ok"):
-            reason = (
-                "没有 2FA 链接，请输入设备上收到的验证码"
-                if not (request.code_url or account.code_url)
-                else "2FA 链接没有取到验证码，请手动输入"
-            )
             self._emit("login.progress", email=account.email, attempt=1, stage="hsa2")
-            code = await self._request_hsa2(account.email, reason)
+            code = await self._request_hsa2(account.email)
             if not code:
                 message = "已取消两步验证"
                 self._emit("login.done", email=account.email, ok=False, message=message)
@@ -328,16 +315,9 @@ class Services:
             self._mark_busy(account.email, False)
         return {"ok": account.logged_in, "message": result["message"], "account": account.public()}
 
-        return {"ok": False, "message": last_error or "登录失败", "account": account.public()}
-
-    async def _request_hsa2(self, email: str, reason: str = "") -> str | None:
+    async def _request_hsa2(self, email: str) -> str | None:
         if self.hsa2_provider is None:
             return None
-        try:
-            return await self.hsa2_provider(email, reason)
-        except TypeError:
-            # Provider written against the older single-argument signature.
-            return await self.hsa2_provider(email)
         return await self.hsa2_provider(email)
 
     async def fetch_billing(self, email: str) -> dict[str, Any]:
@@ -922,9 +902,10 @@ class Services:
         updated: list[str] = []
         for item in parsed.accounts:
             existing = self.store.get(item.email)
-            account = existing or Account(email=item.email)
+            account = existing or Account(email=item.email, created_at=_now())
             account.password = item.password
-            account.code_url = item.code_url
+            if item.note:
+                account.note = item.note
             account.status = account.status or "idle"
             self.store.upsert(account)
             (updated if existing else created).append(item.email)
@@ -938,7 +919,7 @@ class Services:
                 LoginRequest(
                     email=item.email,
                     password=item.password,
-                    code_url=item.code_url,
+                    note=item.note,
                     persist=True,
                 )
             )

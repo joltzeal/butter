@@ -113,7 +113,6 @@ export function WorkspaceView() {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null);
   const [hsa2Email, setHsa2Email] = useState<string | null>(null);
-  const [hsa2Reason, setHsa2Reason] = useState("");
   const [form, setForm] = useState<BillingForm>({ ...EMPTY });
   const [baseline, setBaseline] = useState<BillingForm>({ ...EMPTY });
   const [info, setInfo] = useState<BillingInfo | null>(null);
@@ -182,7 +181,6 @@ export function WorkspaceView() {
       if (email) {
         dismissed.current.delete(email);
         setHsa2Email(email);
-        setHsa2Reason(String(lastEvent.payload.reason ?? ""));
       }
     }
   }, [lastEvent]);
@@ -834,14 +832,12 @@ export function WorkspaceView() {
       <Hsa2Dialog
         open={Boolean(hsa2Email)}
         email={hsa2Email ?? ""}
-        reason={hsa2Reason}
         onCancel={() => {
           if (hsa2Email) {
             dismissed.current.add(hsa2Email);
             void actions.hsa2.mutate({ email: hsa2Email, code: "" });
           }
           setHsa2Email(null);
-          setHsa2Reason("");
         }}
         onSubmit={async (code) => {
           if (!hsa2Email) return false;
@@ -849,7 +845,6 @@ export function WorkspaceView() {
             const result = await actions.hsa2.mutateAsync({ email: hsa2Email, code });
             if (!result.accepted) return false;
             setHsa2Email(null);
-            setHsa2Reason("");
             // The pending billing read continues on its own and paints the
             // result; only re-read when nothing is in flight (manual login).
             if (selected && !actions.fetchBilling.isPending) void load();

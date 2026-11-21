@@ -807,27 +807,11 @@ class IdmsaClient:
         return out
 
 
-def fetch_code(url: str, retries: int = 2, interval: float = 1.2,
-               timeout: float = 6.0) -> str | None:
-    for i in range(retries):
-        try:
-            r = creq.get(url, impersonate="chrome", verify=False, timeout=timeout)
-            m = re.search(r"\b(\d{6})\b", r.text or "")
-            if m:
-                return m.group(1)
-        except Exception:
-            pass
-        if i < retries - 1:
-            time.sleep(interval)
-    return None
-
-
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--email", required=True)
     ap.add_argument("--password", required=True)
-    ap.add_argument("--code-url", default=None)
     ap.add_argument("--proxy", default=None)
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
@@ -840,11 +824,9 @@ if __name__ == "__main__":
     print(f"\ncomplete: {r3.status_code} authType={getattr(cli,'auth_type',None)}")
     if cli.need_2fa:
         cli.prefetch_auth()
-        code = fetch_code(a.code_url) if a.code_url else None
-        print("code:", code)
-        if code:
-            cli.verify_security_code(code)
-            cli.trust_browser()
+        code = input("验证码: ").strip()
+        cli.verify_security_code(code)
+        cli.trust_browser()
     if cli.state.myacinfo:
         cli.step_acquire_as_disa()
         cli.step4_get_sct()

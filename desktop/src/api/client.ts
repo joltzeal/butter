@@ -19,8 +19,6 @@ export interface Account {
   card_suffix: string;
   awaiting_hsa2?: boolean;
   billing_updated_at: string;
-  /** Endpoint that yields the 2FA code; empty means ask the operator. */
-  code_url?: string;
 }
 
 export interface BulkLineError {
@@ -370,7 +368,6 @@ export class Api {
     password?: string;
     note?: string;
     persist?: boolean;
-    code_url?: string;
   }) =>
     this.request<{ ok: boolean; message: string; account: Account }>(
       "/api/accounts/login",

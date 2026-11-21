@@ -6,7 +6,7 @@ understood (see PROTOCOL.md), and keeping them invited silent fallbacks that
 could disagree with the account's actual state.
 """
 
-from .apple_exe_replica import IdmsaClient, fetch_code
+from .apple_exe_replica import IdmsaClient
 from .apple_store_client import (
     StoreAuthError,
     StoreClient,
@@ -52,7 +52,6 @@ __all__ = [
     "encrypt_card_json",
     "fd_client_info",
     "fd_client_info_matching_common_headers",
-    "fetch_code",
     "fill_address",
     "mask_proxy",
     "new_fetch_id",

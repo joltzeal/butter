@@ -8,22 +8,13 @@ import { Dialog } from "../components/Dialog";
 const SEP = "----";
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/;
 
-const PLACEHOLDER = `apple_id@example.com${SEP}密码${SEP}https://…/getcode?id=123
-第二个@example.com${SEP}密码${SEP}https://…/getcode?id=456`;
+const PLACEHOLDER = `apple_id@example.com${SEP}密码${SEP}备注（可空）
+第二个@example.com${SEP}密码${SEP}US 主号`;
 
 interface LineCheck {
   line: number;
   text: string;
   reason: string | null;
-}
-
-function isValidUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 /** Client-side pre-check so the operator sees problems before submitting. */
@@ -41,8 +32,6 @@ function check(text: string): LineCheck[] {
       reason = "邮箱格式不正确";
     } else if (!fields[1]) {
       reason = "密码为空";
-    } else if (!isValidUrl(fields[2])) {
-      reason = "2FA 链接必须是 http(s) URL";
     } else if (seen.has(fields[0].toLowerCase())) {
       reason = "同一批中重复";
     } else {
@@ -96,7 +85,7 @@ export function BulkImportDialog({
       open={open}
       onClose={onClose}
       title="批量导入"
-      subtitle={`每行 邮箱${SEP}密码${SEP}2FA 链接`}
+      subtitle={`每行 邮箱${SEP}密码${SEP}备注`}
       icon={Upload}
       size="md"
       busy={busy}

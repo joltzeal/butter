@@ -108,13 +108,12 @@ class AppState:
         self.pending_hsa2: dict[str, asyncio.Future[str | None]] = {}
         self.services.hsa2_provider = self._await_hsa2
 
-    async def _await_hsa2(self, email: str, reason: str = "") -> str | None:
+    async def _await_hsa2(self, email: str) -> str | None:
         loop = asyncio.get_running_loop()
         future: asyncio.Future[str | None] = loop.create_future()
         self.pending_hsa2[email.lower()] = future
-        # ``reason`` tells the dialog why the automatic fetch did not happen.
         LOGGER.info("[hsa2] 等待验证码 %s (clients=%s)", email, len(self.hub._clients))
-        await self.hub.send("login.hsa2", {"email": email, "reason": reason})
+        await self.hub.send("login.hsa2", {"email": email})
         try:
             code = await asyncio.wait_for(future, timeout=300)
             LOGGER.info("[hsa2] 结束 %s -> %s", email, code or "取消/超时")
@@ -286,10 +285,7 @@ def create_app() -> FastAPI:
             ):
                 raise HTTPException(409, f"{new} 已在列表中")
             # The old address owns the session; keep the data, move the key.
-            if new.lower() != account.email.lower():
-                account.email = new
-                if account.code_url and new:
-                    pass  # code_url is per-account, it stays as-is
+            account.email = new
         if payload.password is not None:
             account.password = payload.password
         if payload.note is not None:
@@ -322,9 +318,6 @@ def create_app() -> FastAPI:
                     password=payload.password,
                     note=payload.note,
                     persist=payload.persist,
-                    code=payload.code,
-                    code_url=payload.code_url,
-                    force_legacy=payload.force_legacy,
                 )
             )
             return result

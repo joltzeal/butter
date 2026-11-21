@@ -5,7 +5,6 @@ macOS, ``%APPDATA%\\butter`` on Windows, ``~/.local/share/butter`` on Linux):
 
     settings.json   proxy / line / UI preferences
     accounts.json   account records (cookies + fingerprint + note)
-    logs/app.log    rotating application log
 
 Writes are atomic (temp file + ``os.replace``) so a crash cannot truncate the
 account database.
@@ -122,9 +121,6 @@ class Account:
     email: str
     password: str = ""
     note: str = ""
-    # Optional endpoint that yields the 6-digit 2FA code. When empty or
-    # unreachable the UI asks the operator to type the code instead.
-    code_url: str = ""
     cookies: dict[str, str] = field(default_factory=dict)
     fingerprint: dict[str, Any] = field(default_factory=dict)
     stk: str = ""

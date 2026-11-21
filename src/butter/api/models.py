@@ -34,7 +34,6 @@ class AccountOut(BaseModel):
     has_card: bool = False
     card_suffix: str = ""
     billing_updated_at: str = ""
-    code_url: str = ""
     # True while the login is parked waiting for a 2FA code.
     awaiting_hsa2: bool = False
 
@@ -44,10 +43,6 @@ class LoginIn(BaseModel):
     password: str = ""
     note: str = ""
     persist: bool = True
-    # 2FA hooks for the verified chain: a literal code, or a URL serving it.
-    code: str = ""
-    code_url: str = ""
-    force_legacy: bool = False
 
 
 class BulkIn(BaseModel):
