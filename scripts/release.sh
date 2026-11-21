@@ -65,7 +65,9 @@ cleanup() {
 step "preflight"
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "not a git repository"
 [[ "$(git rev-parse --abbrev-ref HEAD)" == "main" ]] || die "release from main, not $(git rev-parse --abbrev-ref HEAD)"
-[[ -z "$(git status --porcelain)" ]] || { git status --short; die "working tree has changes — commit or stash first"; }
+if [[ $RESUME == 0 ]]; then
+  [[ -z "$(git status --porcelain)" ]] || { git status --short; die "working tree has changes — commit or stash first"; }
+fi
 command -v gh >/dev/null || die "gh is not installed"
 command -v python3 >/dev/null || die "python3 is not installed"
 gh auth status >/dev/null 2>&1 || die "gh is not logged in"
@@ -227,7 +229,8 @@ try:  # a retried release may already have entries for this version live
 except Exception:
     pass
 json.dump({"version": version, "notes": "",
-           "pub_date": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+           "pub_date": __import__("datetime").datetime.now(
+               __import__("datetime").timezone.utc).isoformat().replace("+00:00", "Z"),
            "platforms": platforms}, open(out, "w"), indent=2)
 PY
 npx wrangler r2 object put "$BUCKET/latest.json" --file "$MANIFEST" --content-type application/json --remote >/dev/null
@@ -257,6 +260,9 @@ print(f"   index.html -> {version}")
 PY
 (cd site && npx wrangler pages deploy public --project-name butter-site --branch main --commit-dirty=true >/dev/null)
 echo "   $SITE_ORIGIN/ deployed"
+git add site/public/index.html
+git commit -q -m "site: downloads -> v$VERSION"
+git push origin main >/dev/null 2>&1 || warn "could not push the site commit — push it by hand"
 
 # ------------------------------------------------------------------ release --
 if [[ "${NO_PUBLISH:-0}" != 1 ]]; then

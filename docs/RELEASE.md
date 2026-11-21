@@ -26,11 +26,19 @@ scripts/release.sh
 | 变量 | 作用 |
 |---|---|
 | `--dry-run` | 走到额度判断为止，然后撤掉本地 commit 和 tag，不碰远端 |
+| `--resume` | 不升版本，复用当前 tag 已有那次 CI run 继续后续步骤（编译已经跑过时用） |
 | `NO_PUBLISH=1` | 产物照发，release 留在草稿状态 |
 | `KEEP_VISIBILITY=1` | 永远不转公开，额度不够也私有跑 |
 | `GITHUB_QUOTA_MINUTES=3000` | 计划额度读不到时改这个（free 2000 / pro 3000 / team 10000） |
 
-失败后重跑：脚本会再升一个 patch 版本，直接在 `main` 上重跑即可；同版本的清单条目会合并，不会互相冲掉。
+失败后怎么办：
+
+- 编译已经成功、只是后面某步断了 → `scripts/release.sh --resume`，不会重编。
+- 编译本身失败 → 修代码，直接重跑 `scripts/release.sh`，会再升一个 patch 版本；同版本清单条目会合并，不会互相冲掉。
+- 仓库卡在公开状态 → `gh repo edit joltzeal/butter --visibility private --accept-visibility-change-consequences`。
+- 站点链接被改了一半 → `git restore site/public/index.html` 再重跑。
+
+脚本成功结尾会把站点改动提交并推一次（此时仓库还是公开，用免费分钟跑那一次只跑测试）。
 
 ## 0. 仓库侧配置
 
