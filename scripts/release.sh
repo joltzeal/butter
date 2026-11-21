@@ -87,7 +87,8 @@ if [[ $RESUME == 1 ]]; then
   TAG="v$VERSION"
   git tag --list "$TAG" | grep -q . || die "no local tag $TAG — nothing to resume"
   git ls-remote --tags origin "refs/tags/$TAG" | grep -q . || die "tag $TAG was never pushed"
-  echo "   $TAG"
+  SHA="$(git rev-list -n 1 "$TAG")"
+  echo "   $TAG @ ${SHA:0:8}"
 else
   step "bump version"
   OLD="$(python3 -c 'import json;print(json.load(open("desktop/package.json"))["version"])')"
@@ -98,6 +99,7 @@ else
   git add -A
   git commit -q -m "release $VERSION"
   git tag "$TAG"
+  SHA="$(git rev-parse HEAD)"
   echo "   $OLD -> $VERSION"
 fi
 
@@ -161,12 +163,15 @@ else
   git push origin main
   git push origin "$TAG"
 fi
-SHA="$(git rev-parse HEAD)"
 RUN=""
 for _ in $(seq 1 30); do
   # headBranch carries the tag name for tag runs; filtering on the commit alone
   # would pick up the main-branch run, which skips the build job on purpose.
   RUN="$(gh run list --workflow build.yml --branch "$TAG" --commit "$SHA" --limit 5 \
+         --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)"
+  [[ -n "$RUN" ]] && break
+  # older GitHub versions ignore --commit for tag refs; fall back to the branch
+  RUN="$(gh run list --workflow build.yml --branch "$TAG" --limit 5 \
          --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)"
   [[ -n "$RUN" ]] && break
   sleep 5
