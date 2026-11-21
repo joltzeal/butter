@@ -184,6 +184,12 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
         allow_credentials=True,
+        # Windows' WebView2 is Chromium and sends the Private Network Access
+        # preflight for http://127.0.0.1. Without this flag Starlette answers
+        # 400 "Disallowed CORS private-network" and every request fails as
+        # "Failed to fetch". WKWebView has no PNA, which is why only Windows
+        # broke.
+        allow_private_network=True,
     )
 
     # --- meta -------------------------------------------------------------
